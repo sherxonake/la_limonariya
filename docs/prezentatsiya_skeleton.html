@@ -20,15 +20,15 @@ html[data-lang="uz"] .ru{display:none!important}
 html[data-lang="ru"] .uz{display:none!important}
 
 /* ============ HERO ============ */
-.hero{background:radial-gradient(120% 90% at 50% -10%, var(--green-soft) 0%, var(--green) 45%, var(--green-deep) 100%);color:var(--cream);text-align:center;padding:56px 24px 88px;position:relative;overflow:hidden}
-.hero::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:48px;background:var(--bg);clip-path:ellipse(75% 100% at 50% 100%)}
+header.hero{background:radial-gradient(120% 90% at 50% -10%, var(--green-soft) 0%, var(--green) 45%, var(--green-deep) 100%);color:var(--cream);text-align:center;padding:56px 24px 88px;position:relative;overflow:hidden}
+header.hero::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:48px;background:var(--bg);clip-path:ellipse(75% 100% at 50% 100%)}
 .lang-toggle{position:absolute;top:20px;right:20px;display:flex;gap:0;border:1px solid rgba(255,240,229,.35);border-radius:999px;overflow:hidden;z-index:5}
 .lang-toggle button{background:transparent;border:none;color:var(--cream);font:600 12px 'Manrope',sans-serif;padding:7px 14px;cursor:pointer;letter-spacing:.06em}
 .lang-toggle button.on{background:var(--cream);color:var(--green)}
-.hero img.logo{width:200px;height:200px;border-radius:28px;box-shadow:0 18px 60px rgba(0,0,0,.35);margin-bottom:28px}
-.hero h1{font-family:'Playfair Display',Georgia,serif;font-size:clamp(34px,6vw,56px);font-weight:600;letter-spacing:.01em;margin-bottom:14px}
-.hero .sub{font-size:clamp(15px,2.4vw,19px);opacity:.85;max-width:640px;margin:0 auto 10px}
-.hero .pill{display:inline-block;margin-top:22px;border:1px solid rgba(243,183,89,.6);color:var(--amber);border-radius:999px;padding:8px 20px;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
+header.hero img.logo{width:200px;height:200px;border-radius:28px;box-shadow:0 18px 60px rgba(0,0,0,.35);margin-bottom:28px}
+header.hero h1{font-family:'Playfair Display',Georgia,serif;font-size:clamp(34px,6vw,56px);font-weight:600;letter-spacing:.01em;margin-bottom:14px}
+header.hero .sub{font-size:clamp(15px,2.4vw,19px);opacity:.85;max-width:640px;margin:0 auto 10px}
+header.hero .pill{display:inline-block;margin-top:22px;border:1px solid rgba(243,183,89,.6);color:var(--amber);border-radius:999px;padding:8px 20px;font-size:13px;font-weight:700;letter-spacing:.12em;text-transform:uppercase}
 
 /* ============ LAYOUT ============ */
 .wrap{max-width:1080px;margin:0 auto;padding:0 24px}
@@ -101,6 +101,21 @@ h2{font-family:'Playfair Display',Georgia,serif;font-size:clamp(26px,4.2vw,38px)
 .frow .feat small{display:block;font-weight:400;opacity:.65;font-size:12.5px;margin-top:2px}
 @media(max-width:640px){.frow{grid-template-columns:1fr}.frow .arr{display:none}}
 .formulas .punch{margin-top:36px;text-align:center;font-family:'Playfair Display',serif;font-size:clamp(19px,3vw,25px);font-style:italic;color:var(--amber)}
+
+/* ============ DIREKTOR ============ */
+.dirsec{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.dir-grid{display:grid;grid-template-columns:auto 1fr;gap:56px;align-items:center;margin-top:48px}
+@media(max-width:880px){.dir-grid{grid-template-columns:1fr;justify-items:center}}
+.roles{display:flex;flex-direction:column;gap:12px;max-width:540px}
+.role{display:grid;grid-template-columns:46px 1fr;gap:14px;align-items:center;background:var(--bg);border:1px solid var(--line);border-radius:14px;padding:13px 18px}
+.role .ri{width:46px;height:46px;border-radius:12px;display:flex;align-items:center;justify-content:center;color:var(--green);background:#fff;border:1px solid var(--line)}
+.role .ri svg{width:22px;height:22px}
+.role.main{border-color:rgba(217,154,43,.55);background:rgba(243,183,89,.12)}
+.role.main .ri{color:var(--amber-2);border-color:rgba(217,154,43,.45)}
+.role h4{font-size:14.5px;font-weight:800;color:var(--green)}
+.role p{font-size:12.5px;color:#51645d;margin-top:1px}
+.lock-note{display:flex;gap:12px;align-items:center;background:var(--green);color:var(--cream);border-radius:14px;padding:14px 18px;font-size:13.5px;font-weight:600;margin-top:4px}
+.lock-note svg{flex:0 0 18px;color:var(--amber)}
 
 /* ============ PHASES ============ */
 .phases-list{margin-top:48px;display:flex;flex-direction:column;gap:0;position:relative}
@@ -232,6 +247,46 @@ footer .fby{margin-top:22px;font-size:11.5px;letter-spacing:.14em;text-transform
   </div>
 </section>
 
+<!-- ================= DIREKTOR ================= -->
+<section class="dirsec">
+  <div class="wrap">
+    <span class="eyebrow uz">Yangi</span><span class="eyebrow ru">Новое</span>
+    <h2 class="uz">Direktor paneli</h2><h2 class="ru">Панель директора</h2>
+    <p class="lead uz">Kun yakunida bitta raqam: <b>sof foyda</b>. Har bir taom marjasi minus zavedeniyaning kunlik xarajatlari (gaz, svet, oshpaz, salatchi…) — va zararsizlik nuqtasi: bugun plyusga chiqish uchun necha porsiya kerak edi.</p>
+    <p class="lead ru">Одна цифра в конце дня: <b>чистая прибыль</b>. Маржа всех блюд минус дневные расходы заведения (газ, свет, повар, салатчи…) — и точка безубыточности: сколько порций нужно было продать, чтобы выйти в плюс.</p>
+    <div class="dir-grid">
+      <div class="shot">
+        %%SCREEN_DIR%%
+        <p class="capt uz">Raqamlar — namuna. Standart kunlik xarajatlar ro'yxatini kiritganingizdan so'ng bu ekran sizning real foydangizni ko'rsatadi.</p>
+        <p class="capt ru">Цифры — пример. Как только введёте список стандартных дневных расходов, этот экран покажет вашу реальную прибыль.</p>
+      </div>
+      <div class="roles">
+        <div class="role main">
+          <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17l3-9 4.5 5L12 5l1.5 8L18 8l3 9H3z"/><path d="M4 21h16"/></svg></div>
+          <div><h4 class="uz">Direktor</h4><h4 class="ru">Директор</h4><p class="uz">hammasi: analitika, foyda, xarajatlar, narxlar, koeffitsiyentlar</p><p class="ru">всё: аналитика, прибыль, расходы, цены, коэффициенты</p></div>
+        </div>
+        <div class="role">
+          <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 013 3L7 19l-4 1 1-4L16.5 3.5z"/></svg></div>
+          <div><h4>Admin</h4><p class="uz">obvalka, kirim, inventarizatsiya, katalog kiritadi</p><p class="ru">вносит обвалку, приходы, инвентаризацию, каталог</p></div>
+        </div>
+        <div class="role">
+          <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.6"/><path d="M6 12h.01M18 12h.01"/></svg></div>
+          <div><h4>Kassir</h4><p class="uz">sotuvni kiritadi, qoldiqni ko'radi — tannarxsiz</p><p class="ru">вносит продажи, видит остатки — без себестоимости</p></div>
+        </div>
+        <div class="role">
+          <div class="ri"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 17a9 9 0 0118 0H3z"/><path d="M12 8V6"/><path d="M2 20h20"/></svg></div>
+          <div><h4>Ofitsiant</h4><p class="uz">menyu, stop-list, buyurtmalar — pul ma'lumotlarisiz</p><p class="ru">меню, стоп-лист, заказы — без данных о деньгах</p></div>
+        </div>
+        <div class="lock-note">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" width="18" height="18"><rect x="4" y="11" width="16" height="9" rx="2"/><path d="M8 11V7a4 4 0 018 0v4"/></svg>
+          <span class="uz">Tannarx va marja — <b>faqat direktorga</b> ko'rinadi. Bu sizning nou-xauingiz.</span>
+          <span class="ru">Себестоимость и маржа видны <b>только директору</b>. Это ваше ноу-хау.</span>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
+
 <!-- ================= PHASES ================= -->
 <section>
   <div class="wrap">
@@ -243,8 +298,9 @@ footer .fby{margin-top:22px;font-size:11.5px;letter-spacing:.14em;text-transform
       <div class="phase"><div class="n">1</div><div><h3 class="uz">Katalog</h3><h3 class="ru">Каталог</h3><p class="uz">Barcha qism va taomlar ro'yxati — jadvalingizdagi 16 pozitsiya + menyu tayyor holda kiritiladi. Nomlar tartibga keladi (Вағора/Вагора, Филе-жиз/Фели жиз — bitta mahsulot).</p><p class="ru">Список всех частей и блюд — 16 позиций из вашей таблицы + меню заносятся сразу. Имена приводятся в порядок (Вағора/Вагора, Филе-жиз/Фели жиз — один продукт).</p></div></div>
       <div class="phase star"><div class="n">2</div><div><h3 class="uz">Obvalka + qoldiq <span class="tag">Asosiy</span></h3><h3 class="ru">Обвалка + остаток <span class="tag">Главное</span></h3><p class="uz">Tusha → qismlar → ombor avtomatik. Jonli vazn balansi + tannarx + tusha marjasi. Sizning asosiy muammoyingiz shu yerda hal bo'ladi.</p><p class="ru">Туша → части → склад автоматически. Живой баланс веса + себестоимость + маржа туши. Ваша главная проблема решается здесь.</p></div></div>
       <div class="phase"><div class="n">3</div><div><h3 class="uz">Kunlik jadval</h3><h3 class="ru">Дневная таблица</h3><p class="uz">Kirim / sotuv / qoldiq kunlar bo'yicha — Excel'dagidek tanish, lekin qoldiq o'zi hisoblanadi. Bir kunda istalgancha chiqim.</p><p class="ru">Приход / продажа / остаток по дням — привычно как Excel, но остаток считается сам. Любое число списаний за день.</p></div></div>
-      <div class="phase"><div class="n">4</div><div><h3 class="uz">Hisobotlar + inventarizatsiya</h3><h3 class="ru">Отчёты + инвентаризация</h3><p class="uz">Davr bo'yicha kirim-chiqim, yo'qotish %, tannarx dinamikasi. Inventarizatsiya — tortishlar yig'indisi bilan, farqlar jurnalga yoziladi.</p><p class="ru">Приход-расход за период, потери %, динамика себестоимости. Инвентаризация — суммой взвешиваний, расхождения фиксируются в журнале.</p></div></div>
+      <div class="phase"><div class="n">4</div><div><h3 class="uz">Hisobotlar + Direktor paneli</h3><h3 class="ru">Отчёты + Панель директора</h3><p class="uz">Davr bo'yicha kirim-chiqim, yo'qotish %, tannarx dinamikasi, inventarizatsiya. Va asosiysi: kunning sof foydasi (marja − kunlik xarajatlar) + zararsizlik nuqtasi — faqat direktorga.</p><p class="ru">Приход-расход за период, потери %, динамика себестоимости, инвентаризация. И главное: чистая прибыль дня (маржа − дневные расходы) + точка безубыточности — только директору.</p></div></div>
       <div class="phase"><div class="n">5</div><div><h3 class="uz">Tex-kartalar</h3><h3 class="ru">Тех-карты</h3><p class="uz">Taom sotildi → ingredientlar o'zi chiqadi. Shashlik normalari (140/90/85 g), Шапок retsepti (1.625 kg aralashma), daftardagi 5 ta salat — hammasi tayyor, kiritamiz xolos.</p><p class="ru">Блюдо продано → ингредиенты списываются сами. Нормы шашлыка (140/90/85 г), рецепт Шапок (смесь 1.625 кг), 5 салатов из тетради — всё уже есть, просто заносим.</p></div></div>
+      <div class="phase"><div class="n">6</div><div><h3 class="uz">Zal moduli (QR) <span class="tag" style="background:var(--green);color:var(--cream)">Kelajak</span></h3><h3 class="ru">Модуль зала (QR) <span class="tag" style="background:var(--green);color:var(--cream)">Будущее</span></h3><p class="uz">Stoldagi QR → menyu (tugagan taom o'zi yashirinadi) → buyurtma → ofitsiantga xabar → sotuv avtomatik skladga tushadi. Qo'lda kiritish butunlay yo'qoladi. Top taomlar uchun 3D/AR — keyinroq.</p><p class="ru">QR на столе → меню (закончившееся блюдо скрывается само) → заказ → уведомление официанту → продажа сама ложится в склад. Ручной ввод исчезает полностью. 3D/AR для топ-блюд — позже.</p></div></div>
     </div>
   </div>
 </section>
@@ -253,11 +309,12 @@ footer .fby{margin-top:22px;font-size:11.5px;letter-spacing:.14em;text-transform
 <section class="needs">
   <div class="wrap">
     <span class="eyebrow uz">Sizdan nima kerak</span><span class="eyebrow ru">Что нужно от вас</span>
-    <h2 class="uz">Atigi uchta narsa</h2><h2 class="ru">Всего три вещи</h2>
+    <h2 class="uz">Atigi to'rtta narsa</h2><h2 class="ru">Всего четыре вещи</h2>
     <ul>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="22" height="22"><path d="M20 6L9 17l-5-5"/></svg><div><span class="uz"><b>30 daqiqa suhbat</b> — bir nechta aniqlik: salat nomlari to'g'rimi? Six og'irliklari o'zgarmadimi? Шапок retsepti qanday?</span><span class="ru"><b>30 минут разговора</b> — несколько уточнений: названия салатов верны? Граммовки сихов не менялись? Какой рецепт у Шапок?</span></div></li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="22" height="22"><path d="M20 6L9 17l-5-5"/></svg><div><span class="uz"><b>Daftardagi qolgan tex-kartalar</b> — suratga olib yuborsangiz kifoya, biz o'zimiz kiritamiz.</span><span class="ru"><b>Остальные тех-карты из тетради</b> — достаточно сфотографировать и прислать, занесём сами.</span></div></li>
       <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="22" height="22"><path d="M20 6L9 17l-5-5"/></svg><div><span class="uz"><b>1–2 kishi</b> — kim ma'lumot kiritadi (omborchi, menejer). Telefon kifoya.</span><span class="ru"><b>1–2 человека</b> — кто будет заносить данные (кладовщик, менеджер). Телефона достаточно.</span></div></li>
+      <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" width="22" height="22"><path d="M20 6L9 17l-5-5"/></svg><div><span class="uz"><b>Standart kunlik xarajatlar ro'yxati</b> — gaz, svet, oshpaz/salatchi maoshlari va h.k. Direktor analitikasi shularsiz ishlamaydi.</span><span class="ru"><b>Список стандартных дневных расходов</b> — газ, свет, зарплаты повара/салатчи и т.д. Без него аналитика директора не заработает.</span></div></li>
     </ul>
   </div>
 </section>
