@@ -155,6 +155,68 @@ CHALOP = {
     ],
 }
 
+# Тетрадь (фото) — Рустам ака тасдиқлади: менюда бор (12.06.2026).
+# Граммовкалар тетраддан ўқилган, кейинги учрашувда расман тасдиқлатиш керак.
+NOTEBOOK_SALADS = [
+    {
+        'name': 'Чиатлашиски салат', 'type': 'salad', 'yield_g_stated': 280,
+        'sum_g_stated': None, 'name_unconfirmed': True,
+        'source': 'тетрадь (фото 11.06.2026); менюда борлиги тасдиқланди 12.06.2026',
+        'ingredients': [
+            {'name': 'товуқ гўшт', 'raw': '50 гр', 'qty_g': 50, 'unit': 'g', 'stock_hint': 'товуқ гўшт'},
+            {'name': 'тухум', 'raw': '50 гр', 'qty_g': 50, 'unit': 'g'},
+            {'name': 'солёный бодринг', 'raw': '40 гр', 'qty_g': 40, 'unit': 'g'},
+            {'name': 'пармезан сыр', 'raw': '30 гр', 'qty_g': 30, 'unit': 'g'},
+            {'name': 'кукуруз', 'raw': '30 гр', 'qty_g': 30, 'unit': 'g'},
+            {'name': 'картошка пай', 'raw': '20 гр', 'qty_g': 20, 'unit': 'g'},
+            {'name': 'майонез', 'raw': '60 гр', 'qty_g': 60, 'unit': 'g'},
+        ],
+    },
+    {
+        'name': 'Пекин салат', 'type': 'salad', 'yield_g_stated': 270,
+        'sum_g_stated': None,
+        'source': 'тетрадь (фото 11.06.2026); менюда борлиги тасдиқланди 12.06.2026',
+        'ingredients': [
+            {'name': 'бодринг', 'raw': '100 гр', 'qty_g': 100, 'unit': 'g'},
+            {'name': 'болгар қалампир', 'raw': '50 гр', 'qty_g': 50, 'unit': 'g'},
+            {'name': 'мол гўшт', 'raw': '50 гр', 'qty_g': 50, 'unit': 'g', 'stock_hint': 'мол лаҳм (обвалка)'},
+            {'name': 'яшил горох', 'raw': '40 гр', 'qty_g': 40, 'unit': 'g'},
+            {'name': 'соя', 'raw': '10 гр', 'qty_g': 10, 'unit': 'g'},
+            {'name': 'масло', 'raw': '10 гр', 'qty_g': 10, 'unit': 'g'},
+            {'name': 'чеснок + аччик паприка', 'raw': '3 гр', 'qty_g': 3, 'unit': 'g'},
+            {'name': 'кашнич', 'raw': '—', 'qty_g': None, 'unit': 'po_vkusu'},
+        ],
+    },
+]
+
+# Рустам ака жавоблари, 12.06.2026 (Sherxon орқали)
+SALAD_YIELD_OVERRIDES = {  # name -> тасдиқланган чиқиш, грамм
+    'Цезар': 280,            # «280 г тўғри» (картада 300 хато)
+    'Греческий салат': 324,  # «324 гр»
+    # Овощной / Хрустящий баклажан / Баклажан с мясом: «ўзинг ҳисобла» → sum_g_calc
+}
+
+CONFIRMATIONS = [
+    'Цезар чиқиши = 280 г (300 эмас) — Рустам ака, 12.06.2026',
+    'Греческий салат чиқиши = 324 г — Рустам ака, 12.06.2026',
+    'Овощной, Хрустящий баклажан, Баклажан с мясом — чиқиш = масаллиқлар йиғиндиси (760/323/296 г)',
+    'Кускавой қўй маринади = +15% (янги карта амал қилади, эски ×1.13 бекор)',
+    'Тушонка = 140 г гўшт/порция (эски 0.13 коэф. бекор)',
+    'Чиатлашиски ва Пекин салатлар менюда бор (тетрадь граммовкалари билан киритилди)',
+    'Шапок — таом эмас, СКЛАД МАҲСУЛОТИ (полуфабрикат): қайта ишланиб Фаршга айланади',
+]
+
+# Переработка ҳужжати тури: N кирим → 1 чиқим, себестоимость оқиб ўтади
+PRODUCTIONS = [
+    {
+        'output': 'Фарш',
+        'inputs': [{'name': 'Шапок', 'stock_hint': 'Шапок'}],
+        'status': 'composition_pending',
+        'note': 'Шапок + қўшимчалар → Фарш (Рустам ака тасдиқлади, 12.06.2026). '
+                'Қўшимчалар рўйхати ва пропорция (1 кг шапокдан неча кг фарш) — сўраш керак.',
+    },
+]
+
 ALIASES = {  # canonical -> spellings seen in the files
     'бодринг': ['бодиринг'],
     'болгар қалампир': ['светофор перец', 'светафор перец', 'светофор қалампир', 'болгар қалампир (2 хил)'],
@@ -170,18 +232,29 @@ ALIASES = {  # canonical -> spellings seen in the files
 
 def main():
     dishes = parse_dishes()
-    salads = parse_salads() + [CHALOP]
+    salads = parse_salads() + [CHALOP] + NOTEBOOK_SALADS
 
-    for s in salads:  # integrity check
+    for s in salads:  # integrity check + confirmed yields
         calc = sum(i['qty_g'] for i in s['ingredients'] if i.get('qty_g'))
         s['sum_g_calc'] = round(calc, 1)
+        if s['name'] in SALAD_YIELD_OVERRIDES:
+            s['yield_g'] = SALAD_YIELD_OVERRIDES[s['name']]
+            s['yield_confirmed'] = 'Рустам ака, 12.06.2026'
+        else:
+            s['yield_g'] = s['yield_g_stated'] or s['sum_g_calc']
         flags = []
         if s['sum_g_stated'] is not None and abs(calc - s['sum_g_stated']) > 0.5:
             flags.append(f"ЖАМИ {s['sum_g_stated']} ≠ ҳисобланган {calc}")
-        if s['yield_g_stated'] is not None and abs(calc - s['yield_g_stated']) > 5:
+        if s['yield_g_stated'] is not None and abs(calc - s['yield_g_stated']) > 5 \
+                and s['name'] not in SALAD_YIELD_OVERRIDES:
             flags.append(f"чиқиш {s['yield_g_stated']} vs масаллиқлар {calc}")
         if flags:
             s['flags'] = flags
+
+    # тасдиқланган маринад: кускавой қўй +15% (янги карта ғолиб)
+    for dish in dishes:
+        if dish['name'].startswith('Шашлик — кускавой') and dish.get('category') == 'куй':
+            dish['marinade']['confirmed'] = 'янги карта амал қилади (+15%), эски ×1.13 бекор — 12.06.2026'
 
     ing_names = {}
     for d in dishes + salads:
@@ -193,10 +266,12 @@ def main():
         'source': {
             'files': ['техкарта limonariya.xlsx', 'Салатлар_тех_карта.xlsx'],
             'received': '2026-06-12', 'from': 'Рустам ака',
-            'note': 'Чалоп Айрон — қўлда қўшилган (файлда йўқ эди)',
+            'note': 'Чалоп Айрон, Чиатлашиски, Пекин — файлда йўқ, қўлда қўшилган',
         },
+        'confirmations': CONFIRMATIONS,
         'dishes': dishes,
         'salads': salads,
+        'productions': PRODUCTIONS,
         'ingredient_usage': dict(sorted(ing_names.items(), key=lambda kv: -kv[1])),
         'aliases': ALIASES,
     }
