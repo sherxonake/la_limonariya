@@ -21,6 +21,8 @@ import {
   orders,
   partTypes,
   products,
+  purchaseItems,
+  purchases,
   recipeItems,
   recipes,
   sessions,
@@ -887,6 +889,135 @@ export const appRouter = router({
         .orderBy(products.type, products.name);
       return rows.map((r) => ({ ...r, onHand: Number(r.onHand) }));
     }),
+  }),
+
+  purchase: router({
+    // Purchasable goods/raw — meat comes via obvalka, dishes/semi are produced.
+    products: protectedProcedure.query(async () => {
+      return db
+        .select({
+          id: products.id,
+          name: products.name,
+          unit: products.unit,
+          type: products.type,
+          costPrice: products.costPrice,
+        })
+        .from(products)
+        .where(
+          and(
+            eq(products.active, true),
+            inArray(products.type, ["ingredient", "goods"]),
+          ),
+        )
+        .orderBy(products.name);
+    }),
+
+    list: protectedProcedure.query(async () => {
+      const rows = await db
+        .select({
+          id: purchases.id,
+          supplier: purchases.supplier,
+          total: purchases.total,
+          createdAt: purchases.createdAt,
+          buyer: users.name,
+          lines: sql<number>`count(${purchaseItems.id})`,
+        })
+        .from(purchases)
+        .leftJoin(users, eq(purchases.createdById, users.id))
+        .leftJoin(purchaseItems, eq(purchaseItems.purchaseId, purchases.id))
+        .groupBy(purchases.id, users.name)
+        .orderBy(desc(purchases.createdAt))
+        .limit(50);
+      return rows.map((r) => ({ ...r, lines: Number(r.lines) }));
+    }),
+
+    create: protectedProcedure
+      .input(
+        z.object({
+          supplier: z.string().optional(),
+          note: z.string().optional(),
+          items: z
+            .array(
+              z.object({
+                productId: z.string().uuid(),
+                qty: z.number().positive(),
+                price: z.number().int().nonnegative(),
+              }),
+            )
+            .min(1),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        return db.transaction(async (tx) => {
+          const prods = await tx
+            .select({ id: products.id, unit: products.unit })
+            .from(products)
+            .where(
+              inArray(
+                products.id,
+                input.items.map((i) => i.productId),
+              ),
+            );
+          const unitOf = new Map(prods.map((p) => [p.id, p.unit]));
+
+          const total = input.items.reduce((s, i) => s + i.price, 0);
+          const head = (
+            await tx
+              .insert(purchases)
+              .values({
+                supplier: input.supplier ?? null,
+                note: input.note ?? null,
+                total,
+                createdById: ctx.user.id,
+              })
+              .returning()
+          )[0];
+          if (!head) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+          const lines: (typeof purchaseItems.$inferInsert)[] = [];
+          const moves: (typeof stockMovements.$inferInsert)[] = [];
+          for (const it of input.items) {
+            const u = unitOf.get(it.productId);
+            if (!u) continue;
+            const factor = u === "kg" || u === "l" ? 1000 : 1;
+            const base = Math.round(it.qty * factor);
+            if (base <= 0) continue;
+            const baseUnit =
+              u === "dona" ? "dona" : u === "l" || u === "ml" ? "ml" : "g";
+            lines.push({
+              purchaseId: head.id,
+              productId: it.productId,
+              qty: base,
+              unit: baseUnit,
+              price: it.price,
+            });
+            moves.push({
+              productId: it.productId,
+              type: "purchase",
+              qty: base,
+              unit: baseUnit,
+              refType: "purchase",
+              refId: head.id,
+              createdById: ctx.user.id,
+            });
+            // remember last purchase price per display unit (kg/dona/l)
+            const perUnit = Math.round(it.price / it.qty);
+            if (perUnit > 0)
+              await tx
+                .update(products)
+                .set({ costPrice: perUnit })
+                .where(eq(products.id, it.productId));
+          }
+          if (!lines.length)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Маҳсулот танланг",
+            });
+          await tx.insert(purchaseItems).values(lines);
+          await tx.insert(stockMovements).values(moves);
+          return { id: head.id, lines: lines.length, total };
+        });
+      }),
   }),
 });
 

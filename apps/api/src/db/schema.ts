@@ -216,6 +216,35 @@ export const orderPayments = pgTable("order_payments", {
   amount: integer("amount").notNull(),
 });
 
+export const purchases = pgTable("purchases", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  supplier: text("supplier"),
+  note: text("note"),
+  total: integer("total").notNull().default(0),
+  branchId: uuid("branch_id").references(() => branches.id),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const purchaseItems = pgTable(
+  "purchase_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    purchaseId: uuid("purchase_id")
+      .notNull()
+      .references(() => purchases.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id),
+    qty: integer("qty").notNull(), // base unit: grams for kg/g, ml for l/ml, dona for dona
+    unit: productUnit("unit").notNull(),
+    price: integer("price").notNull().default(0), // line total, so'm
+  },
+  (t) => [index("pi_purchase_idx").on(t.purchaseId)],
+);
+
 export const movementType = pgEnum("movement_type", [
   "purchase",
   "obvalka",

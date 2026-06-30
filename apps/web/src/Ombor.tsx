@@ -19,9 +19,10 @@ const TYPE_LABEL: Record<string, string> = {
 
 function fmt(r: Row): string {
   if (r.unit === "dona") return `${r.onHand} дона`;
+  const liquid = r.unit === "l" || r.unit === "ml";
   return Math.abs(r.onHand) >= 1000
-    ? `${(r.onHand / 1000).toFixed(2)} кг`
-    : `${r.onHand} г`;
+    ? `${(r.onHand / 1000).toFixed(2)} ${liquid ? "л" : "кг"}`
+    : `${r.onHand} ${liquid ? "мл" : "г"}`;
 }
 
 export function Ombor() {

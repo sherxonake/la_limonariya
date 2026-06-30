@@ -64,6 +64,13 @@
       "when": 1782829092606,
       "tag": "0008_special_peter_parker",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1782834652656,
+      "tag": "0009_minor_adam_warlock",
+      "breakpoints": true
     }
   ]
 }

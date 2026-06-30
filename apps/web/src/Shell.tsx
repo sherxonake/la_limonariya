@@ -5,6 +5,7 @@ import { Dashboard } from "./Dashboard";
 import { Obvalka } from "./Obvalka";
 import { Ombor } from "./Ombor";
 import { Pos } from "./Pos";
+import { Purchases } from "./Purchases";
 import { Recipes } from "./Recipes";
 import { Taannarx } from "./Taannarx";
 import { trpc } from "./trpc";
@@ -20,6 +21,7 @@ const ROLE_LABEL: Record<string, string> = {
 type Tab =
   | "dashboard"
   | "pos"
+  | "harid"
   | "obvalka"
   | "ombor"
   | "taannarx"
@@ -57,6 +59,7 @@ export function Shell({
   const tabs: { key: Tab; label: string }[] = [
     ...(isDirector ? [{ key: "dashboard" as Tab, label: "Бошқарув" }] : []),
     ...(canPos ? [{ key: "pos" as Tab, label: "Касса" }] : []),
+    ...(canObvalka ? [{ key: "harid" as Tab, label: "Харид" }] : []),
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
     ...(["director", "manager"].includes(user.role)
       ? [{ key: "ombor" as Tab, label: "Омбор" }]
@@ -105,6 +108,7 @@ export function Shell({
       <main className="mx-auto max-w-4xl p-5">
         {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
         {tab === "pos" && <Pos />}
+        {tab === "harid" && <Purchases />}
         {tab === "obvalka" && <Obvalka />}
         {tab === "ombor" && <Ombor />}
         {tab === "taannarx" && <Taannarx />}
