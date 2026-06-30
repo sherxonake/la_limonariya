@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { BRAND } from "./brand";
 import { trpc } from "./trpc";
 
 type Hall = { id: string; name: string; servicePct: number };
@@ -371,8 +372,8 @@ function Chek({ order, onBack }: { order: Order; onBack: () => void }) {
         className="mx-auto max-w-xs rounded-xl border bg-white p-5 font-mono text-[13px] text-zinc-800"
       >
         <div className="text-center">
-          <div className="text-base font-bold">La Limonariya</div>
-          <div className="text-xs text-zinc-500">Навоий</div>
+          <div className="text-base font-bold">{BRAND.name}</div>
+          <div className="text-xs text-zinc-500">{BRAND.city} · {BRAND.phone}</div>
         </div>
         <Hr />
         <div className="text-center font-semibold tracking-wide">

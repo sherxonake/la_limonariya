@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionUser } from "./App";
 import { Analitika } from "./Analitika";
+import { BRAND } from "./brand";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
 import { Hisobot } from "./Hisobot";
@@ -90,9 +91,12 @@ export function Shell({
     <div className="min-h-dvh bg-zinc-50 text-zinc-900">
       <header className="flex items-center justify-between border-b bg-white px-5 py-3">
         <div className="flex items-center gap-5">
-          <div className="flex items-baseline gap-2">
-            <span className="text-lg font-bold">La Limonariya</span>
-            <span className="text-xs text-zinc-400">Навоий</span>
+          <div className="flex items-center gap-2">
+            <img src={BRAND.logoSmall} alt="" className="h-8 w-8 rounded-full object-cover" />
+            <div className="flex items-baseline gap-2">
+              <span className="text-lg font-bold">{BRAND.name}</span>
+              <span className="text-xs text-zinc-400">{BRAND.city}</span>
+            </div>
           </div>
           <nav className="flex flex-wrap gap-1">
             {tabs.map((t) => (
