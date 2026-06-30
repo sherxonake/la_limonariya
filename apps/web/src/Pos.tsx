@@ -372,7 +372,7 @@ function Chek({ order, onBack }: { order: Order; onBack: () => void }) {
       >
         <div className="text-center">
           <div className="text-base font-bold">La Limonariya</div>
-          <div className="text-xs text-zinc-500">Навоий · (78) 113-77-74</div>
+          <div className="text-xs text-zinc-500">Навоий</div>
         </div>
         <Hr />
         <div className="text-center font-semibold tracking-wide">

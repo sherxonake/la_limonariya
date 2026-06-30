@@ -13,6 +13,7 @@ import { SESSION_COOKIE } from "./context";
 import { db } from "./db/client";
 import {
   categories,
+  debtPayments,
   expenses,
   halls,
   obvalka,
@@ -29,6 +30,7 @@ import {
   sessions,
   stations,
   stockMovements,
+  tillCounts,
   users,
 } from "./db/schema";
 import { computeObvalka } from "./obvalka-calc";
@@ -216,6 +218,8 @@ async function cogsForWindow(start: Date, end: Date) {
 }
 
 // Shared revenue/COGS/OPEX aggregation over a UTC window — used by dayClose + pnl.
+const TILL_FLOAT = 50_000; // owner-confirmed start-of-shift register float
+
 async function financeForWindow(start: Date, end: Date) {
   const payRows = await db
     .select({ method: orderPayments.method, amount: orderPayments.amount })
@@ -1292,7 +1296,8 @@ export const appRouter = router({
       }));
       const supplierTotal = supplier.reduce((s, r) => s + r.outstanding, 0);
 
-      const guestRows = await db
+      // guest debt = order_payments(method='debt') minus later debt_payments repayments
+      const debtRows = await db
         .select({
           orderId: orders.id,
           tableNo: orders.tableNo,
@@ -1303,22 +1308,180 @@ export const appRouter = router({
         .from(orderPayments)
         .innerJoin(orders, eq(orderPayments.orderId, orders.id))
         .leftJoin(halls, eq(orders.hallId, halls.id))
-        .where(eq(orderPayments.method, "debt"))
-        .orderBy(desc(orders.closedAt))
-        .limit(50);
-      // total is unbounded — guestRows is only the latest 50 for display
-      const guestTotal = Number(
-        (
-          await db
-            .select({
-              s: sql<number>`coalesce(sum(${orderPayments.amount}), 0)`,
-            })
-            .from(orderPayments)
-            .where(eq(orderPayments.method, "debt"))
-        )[0]?.s ?? 0,
-      );
+        .where(eq(orderPayments.method, "debt"));
+      const paidRows = await db
+        .select({
+          orderId: debtPayments.orderId,
+          paid: sql<number>`sum(${debtPayments.amount})`,
+        })
+        .from(debtPayments)
+        .groupBy(debtPayments.orderId);
+      const paidMap = new Map(paidRows.map((r) => [r.orderId, Number(r.paid)]));
+      const guestAll = debtRows
+        .map((r) => ({ ...r, outstanding: r.amount - (paidMap.get(r.orderId) ?? 0) }))
+        .filter((r) => r.outstanding > 0)
+        .sort((a, b) => (b.closedAt?.getTime() ?? 0) - (a.closedAt?.getTime() ?? 0));
+      const guestTotal = guestAll.reduce((s, r) => s + r.outstanding, 0);
+      const guest = guestAll.slice(0, 50);
 
-      return { supplier, supplierTotal, guest: guestRows, guestTotal };
+      return { supplier, supplierTotal, guest, guestTotal };
+    }),
+
+    payGuestDebt: protectedProcedure
+      .input(
+        z.object({
+          orderId: z.string().uuid(),
+          amount: z.number().int().positive(),
+          method: z.enum(["cash", "card", "click", "payme"]).optional(),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!["director", "manager", "cashier"].includes(ctx.user.role))
+          throw new TRPCError({ code: "FORBIDDEN" });
+        return db.transaction(async (tx) => {
+          // lock the order row so concurrent repayments serialize (no lost-update over-pay)
+          await tx.execute(
+            sql`select id from ${orders} where id = ${input.orderId} for update`,
+          );
+          const debt = (
+            await tx
+              .select({ amount: orderPayments.amount })
+              .from(orderPayments)
+              .where(
+                and(
+                  eq(orderPayments.orderId, input.orderId),
+                  eq(orderPayments.method, "debt"),
+                ),
+              )
+              .limit(1)
+          )[0];
+          if (!debt) throw new TRPCError({ code: "NOT_FOUND" });
+          const paid = Number(
+            (
+              await tx
+                .select({ s: sql<number>`coalesce(sum(${debtPayments.amount}), 0)` })
+                .from(debtPayments)
+                .where(eq(debtPayments.orderId, input.orderId))
+            )[0]?.s ?? 0,
+          );
+          const outstanding = debt.amount - paid;
+          if (input.amount > outstanding)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Қолган қарз ${outstanding.toLocaleString("ru-RU")} so'm`,
+            });
+          await tx.insert(debtPayments).values({
+            orderId: input.orderId,
+            amount: input.amount,
+            method: input.method ?? "cash",
+            createdById: ctx.user.id,
+          });
+          return { ok: true, outstanding: outstanding - input.amount };
+        });
+      }),
+
+    tillCount: router({
+      get: directorProcedure
+        .input(
+          z
+            .object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+            .optional(),
+        )
+        .query(async ({ input }) => {
+          const { startUTC, endUTC, dayKey } = businessDayBounds(input?.day);
+          const cashRevenue = Number(
+            (
+              await db
+                .select({ s: sql<number>`coalesce(sum(${orderPayments.amount}), 0)` })
+                .from(orderPayments)
+                .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+                .where(
+                  and(
+                    eq(orderPayments.method, "cash"),
+                    eq(orders.status, "closed"),
+                    gte(orders.closedAt, startUTC),
+                    lt(orders.closedAt, endUTC),
+                  ),
+                )
+            )[0]?.s ?? 0,
+          );
+          const cashDebtRepaid = Number(
+            (
+              await db
+                .select({ s: sql<number>`coalesce(sum(${debtPayments.amount}), 0)` })
+                .from(debtPayments)
+                .where(
+                  and(
+                    eq(debtPayments.method, "cash"),
+                    gte(debtPayments.createdAt, startUTC),
+                    lt(debtPayments.createdAt, endUTC),
+                  ),
+                )
+            )[0]?.s ?? 0,
+          );
+          const cashExpenses = Number(
+            (
+              await db
+                .select({ s: sql<number>`coalesce(sum(${expenses.amount}), 0)` })
+                .from(expenses)
+                .where(
+                  and(
+                    eq(expenses.method, "cash"),
+                    gte(expenses.spentAt, startUTC),
+                    lt(expenses.spentAt, endUTC),
+                  ),
+                )
+            )[0]?.s ?? 0,
+          );
+          const expectedCash = TILL_FLOAT + cashRevenue + cashDebtRepaid - cashExpenses;
+          const row = (
+            await db
+              .select()
+              .from(tillCounts)
+              .where(eq(tillCounts.dayKey, dayKey))
+              .limit(1)
+          )[0];
+          return {
+            dayKey,
+            floatAmount: TILL_FLOAT,
+            cashRevenue,
+            cashDebtRepaid,
+            cashExpenses,
+            expectedCash,
+            countedCash: row?.countedCash ?? null,
+            variance: row ? row.countedCash - expectedCash : null,
+            note: row?.note ?? null,
+          };
+        }),
+
+      set: directorProcedure
+        .input(
+          z.object({
+            day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+            countedCash: z.number().int().nonnegative(),
+            note: z.string().optional(),
+          }),
+        )
+        .mutation(async ({ input, ctx }) => {
+          const { dayKey } = businessDayBounds(input.day);
+          await db
+            .insert(tillCounts)
+            .values({
+              dayKey,
+              countedCash: input.countedCash,
+              note: input.note ?? null,
+              createdById: ctx.user.id,
+            })
+            .onConflictDoUpdate({
+              target: tillCounts.dayKey,
+              // note omitted on a later call → keep the existing value, don't null it out
+              set: {
+                countedCash: input.countedCash,
+                ...(input.note !== undefined ? { note: input.note } : {}),
+              },
+            });
+          return { ok: true };
+        }),
     }),
 
     paySupplier: protectedProcedure

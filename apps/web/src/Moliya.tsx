@@ -228,8 +228,82 @@ function DayClose() {
       ) : !f ? (
         <div className="p-6 text-center text-zinc-400">⏳</div>
       ) : (
-        <FinView f={f} />
+        <>
+          <FinView f={f} />
+          <TillCount day={day} />
+        </>
       )}
+    </div>
+  );
+}
+
+type TillData = {
+  dayKey: string;
+  floatAmount: number;
+  cashRevenue: number;
+  cashDebtRepaid: number;
+  cashExpenses: number;
+  expectedCash: number;
+  countedCash: number | null;
+  variance: number | null;
+  note: string | null;
+};
+
+function TillCount({ day }: { day: string }) {
+  const [t, setT] = useState<TillData | null>(null);
+  const [counted, setCounted] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState(false);
+  const refresh = useCallback(() => {
+    setErr(false);
+    trpc.finance.tillCount.get
+      .query({ day })
+      .then((d) => { setT(d); setCounted(d.countedCash != null ? String(d.countedCash) : ""); })
+      .catch(() => { setT(null); setErr(true); });
+  }, [day]);
+  useEffect(() => {
+    setT(null);
+    refresh();
+  }, [refresh]);
+
+  async function save() {
+    const c = Math.round(Number(counted) || 0);
+    setBusy(true);
+    try {
+      await trpc.finance.tillCount.set.mutate({ day, countedCash: c });
+      refresh();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (err) return <ErrBox onRetry={refresh} />;
+  if (!t) return <div className="rounded-xl border bg-white p-6 text-center text-zinc-400">⏳</div>;
+  return (
+    <div className="rounded-xl border bg-white p-4">
+      <div className="mb-3 text-sm font-semibold">Касса санаш (камомад)</div>
+      <div className="mb-3 grid grid-cols-2 gap-2 text-xs text-zinc-500 sm:grid-cols-4">
+        <span>Размен: <b className="text-zinc-700">{fmt(t.floatAmount)}</b></span>
+        <span>Нақд тушум: <b className="text-zinc-700">{fmt(t.cashRevenue)}</b></span>
+        <span>Қарз қайтган: <b className="text-zinc-700">{fmt(t.cashDebtRepaid)}</b></span>
+        <span>Нақд харажат: <b className="text-zinc-700">{fmt(t.cashExpenses)}</b></span>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="text-sm text-zinc-500">Кутилган: <b className="tabular-nums">{fmt(t.expectedCash)}</b></span>
+        <input
+          inputMode="numeric"
+          value={counted}
+          onChange={(e) => setCounted(e.target.value.replace(/\D/g, ""))}
+          placeholder="реал санаб чиқилган"
+          className="w-44 rounded-lg border px-3 py-1.5 text-sm tabular-nums outline-none focus:border-emerald-500"
+        />
+        <button onClick={save} disabled={busy || !counted} className="rounded-lg bg-emerald-600 px-4 py-1.5 text-sm font-medium text-white disabled:opacity-40">Сақлаш</button>
+        {t.variance != null && (
+          <span className={`rounded-full px-2.5 py-1 text-xs font-medium tabular-nums ${t.variance === 0 ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
+            {t.variance === 0 ? "тенг ✓" : `камомад ${t.variance > 0 ? "+" : ""}${fmt(t.variance)}`}
+          </span>
+        )}
+      </div>
     </div>
   );
 }
@@ -440,14 +514,21 @@ function Pnl() {
 type Debt = {
   supplier: { id: string; supplier: string | null; total: number; paidTotal: number; outstanding: number; createdAt: string }[];
   supplierTotal: number;
-  guest: { orderId: string; tableNo: string | null; hall: string | null; closedAt: string | null; amount: number }[];
+  guest: { orderId: string; tableNo: string | null; hall: string | null; closedAt: string | null; outstanding: number }[];
   guestTotal: number;
+};
+
+type PayTarget = {
+  title: string;
+  outstanding: number;
+  showMethod?: boolean;
+  onPay: (amount: number, method?: string) => Promise<void>;
 };
 
 function Debts() {
   const [d, setD] = useState<Debt | null>(null);
   const [err, setErr] = useState(false);
-  const [pay, setPay] = useState<Debt["supplier"][number] | null>(null);
+  const [pay, setPay] = useState<PayTarget | null>(null);
   const refresh = useCallback(() => {
     setErr(false);
     trpc.finance.debts.query().then(setD).catch(() => setErr(true));
@@ -477,7 +558,20 @@ function Debts() {
                 </span>
                 <span className="flex items-center gap-3">
                   <span className="tabular-nums font-medium text-red-600">{fmt(s.outstanding)}</span>
-                  <button onClick={() => setPay(s)} className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white">Тўлов</button>
+                  <button
+                    onClick={() =>
+                      setPay({
+                        title: `${s.supplier ?? "Етказувчи"}га тўлов`,
+                        outstanding: s.outstanding,
+                        onPay: async (amount) => {
+                          await trpc.finance.paySupplier.mutate({ purchaseId: s.id, amount });
+                        },
+                      })
+                    }
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white"
+                  >
+                    Тўлов
+                  </button>
                 </span>
               </div>
             ))}
@@ -499,28 +593,52 @@ function Debts() {
                 <span className="text-zinc-500">
                   {g.hall ?? "—"} {g.tableNo ? `· стол ${g.tableNo}` : ""}
                 </span>
-                <span className="tabular-nums font-medium">{fmt(g.amount)}</span>
+                <span className="flex items-center gap-3">
+                  <span className="tabular-nums font-medium">{fmt(g.outstanding)}</span>
+                  <button
+                    onClick={() =>
+                      setPay({
+                        title: `${g.hall ?? "Меҳмон"}${g.tableNo ? ` · стол ${g.tableNo}` : ""} тўлови`,
+                        outstanding: g.outstanding,
+                        showMethod: true,
+                        onPay: async (amount, method) => {
+                          await trpc.finance.payGuestDebt.mutate({
+                            orderId: g.orderId,
+                            amount,
+                            method: (method as "cash" | "card" | "click" | "payme") ?? "cash",
+                          });
+                        },
+                      })
+                    }
+                    className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white"
+                  >
+                    Тўлов
+                  </button>
+                </span>
               </div>
             ))}
           </div>
         )}
       </div>
 
-      {pay && <PayModal s={pay} onClose={() => setPay(null)} onPaid={() => { setPay(null); refresh(); }} />}
+      {pay && (
+        <PayModal target={pay} onClose={() => setPay(null)} onPaid={() => { setPay(null); refresh(); }} />
+      )}
     </div>
   );
 }
 
 function PayModal({
-  s,
+  target,
   onClose,
   onPaid,
 }: {
-  s: Debt["supplier"][number];
+  target: PayTarget;
   onClose: () => void;
   onPaid: () => void;
 }) {
-  const [amount, setAmount] = useState(String(s.outstanding));
+  const [amount, setAmount] = useState(String(target.outstanding));
+  const [method, setMethod] = useState("cash");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
@@ -530,7 +648,7 @@ function PayModal({
     setBusy(true);
     setErr(null);
     try {
-      await trpc.finance.paySupplier.mutate({ purchaseId: s.id, amount: amt });
+      await target.onPay(amt, method);
       onPaid();
     } catch (e: unknown) {
       setErr(e instanceof Error ? e.message : "Хато");
@@ -543,8 +661,8 @@ function PayModal({
     <div className="fixed inset-0 grid place-items-center bg-black/40 p-4" onClick={onClose}>
       <div className="w-full max-w-xs space-y-4 rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
         <div>
-          <h3 className="font-semibold">{s.supplier ?? "Етказувчи"}га тўлов</h3>
-          <p className="text-sm text-zinc-500">Қолган қарз: {fmt(s.outstanding)} so'm</p>
+          <h3 className="font-semibold">{target.title}</h3>
+          <p className="text-sm text-zinc-500">Қолган қарз: {fmt(target.outstanding)} so'm</p>
         </div>
         <input
           autoFocus
@@ -553,6 +671,19 @@ function PayModal({
           onChange={(e) => { setErr(null); setAmount(e.target.value.replace(/\D/g, "")); }}
           className="w-full rounded-xl border px-4 py-3 text-right text-lg tabular-nums outline-none focus:border-emerald-500"
         />
+        {target.showMethod && (
+          <div className="flex gap-1.5">
+            {["cash", "card", "click", "payme"].map((m) => (
+              <button
+                key={m}
+                onClick={() => setMethod(m)}
+                className={`flex-1 rounded-lg py-1.5 text-xs font-medium ${method === m ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600"}`}
+              >
+                {METHOD[m] ?? m}
+              </button>
+            ))}
+          </div>
+        )}
         {err && <p className="text-sm text-red-500">{err}</p>}
         <div className="flex gap-2">
           <button onClick={onClose} className="flex-1 rounded-xl border py-2.5 text-zinc-600">Бекор</button>

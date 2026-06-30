@@ -310,3 +310,34 @@ export const expenses = pgTable(
   },
   (t) => [index("exp_spent_idx").on(t.spentAt)],
 );
+
+// Repayments of guest debt (order_payments.method='debt' is a write-once close
+// snapshot — this is the running ledger of later repayments against it).
+export const debtPayments = pgTable(
+  "debt_payments",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    amount: integer("amount").notNull(),
+    method: paymentMethod("method").notNull().default("cash"),
+    note: text("note"),
+    createdById: uuid("created_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("dp_order_idx").on(t.orderId)],
+);
+
+// One physical cash count per operational day (директор санайди, камомад кўради).
+export const tillCounts = pgTable("till_counts", {
+  dayKey: text("day_key").primaryKey(), // 'YYYY-MM-DD' businessDayBounds.dayKey
+  countedCash: integer("counted_cash").notNull(),
+  note: text("note"),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
