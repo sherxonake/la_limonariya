@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionUser } from "./App";
 import { Catalog } from "./Catalog";
+import { Recipes } from "./Recipes";
 import { trpc } from "./trpc";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -11,7 +12,7 @@ const ROLE_LABEL: Record<string, string> = {
   waiter: "Официант",
 };
 
-type Tab = "catalog" | "staff";
+type Tab = "catalog" | "recipes" | "staff";
 
 export function Shell({
   user,
@@ -29,6 +30,7 @@ export function Shell({
 
   const tabs: { key: Tab; label: string }[] = [
     { key: "catalog", label: "Каталог" },
+    { key: "recipes", label: "Рецептлар" },
     ...(user.role === "director"
       ? [{ key: "staff" as Tab, label: "Ходимлар" }]
       : []),
@@ -70,7 +72,9 @@ export function Shell({
       </header>
 
       <main className="mx-auto max-w-4xl p-5">
-        {tab === "catalog" ? <Catalog /> : <StaffSection />}
+        {tab === "catalog" && <Catalog />}
+        {tab === "recipes" && <Recipes />}
+        {tab === "staff" && <StaffSection />}
       </main>
     </div>
   );

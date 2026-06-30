@@ -1,0 +1,1909 @@
+{
+ "recipes": [
+  {
+   "name": "Умакай жиз",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1150.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "фри (картошка)",
+     "qty_g": 500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Бугламма",
+   "kind": "hot",
+   "category": "куй",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1150.0,
+     "stock_hint": "қўй лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "паприка",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "арча",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Уйғурча жиз",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": {
+    "gain_g_per_base": 200.0,
+    "note": "200гр купаяди ( изза мариновки)"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок",
+     "qty_g": 30.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сельдерей",
+     "qty_g": null,
+     "stock_hint": null
+    },
+    {
+     "name": "светофор перец",
+     "qty_g": 200.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Шашлик — кускавой",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": {
+    "gain_pct": 13.0,
+    "note": "13% купаяди изза мариновки"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 10000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "киви",
+     "qty_g": 284.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "минерал сув",
+     "qty_g": 750.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кашнич",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "думба",
+     "qty_g": 2200.0,
+     "stock_hint": "Думба"
+    }
+   ]
+  },
+  {
+   "name": "Шашлик — кускавой",
+   "kind": "hot",
+   "category": "куй",
+   "yield_g": null,
+   "marinade": {
+    "gain_pct": 15.0,
+    "note": "15% купаяди изза мариновки",
+    "confirmed": "янги карта амал қилади (+15%), эски ×1.13 бекор — 12.06.2026"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 10000.0,
+     "stock_hint": "қўй лаҳм (обвалка)"
+    },
+    {
+     "name": "киви",
+     "qty_g": 250.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "минерал сув",
+     "qty_g": 750.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кашнич",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "думба",
+     "qty_g": 2000.0,
+     "stock_hint": "Думба"
+    }
+   ]
+  },
+  {
+   "name": "Шашлик — фарш",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "фарш",
+     "qty_g": 10000.0,
+     "stock_hint": "Фарш"
+    },
+    {
+     "name": "корин чарви",
+     "qty_g": 1000.0,
+     "stock_hint": "Чарви-г?"
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 1700.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 180.0,
+     "stock_hint": null
+    },
+    {
+     "name": "буйин гўшти",
+     "qty_g": 4000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "феле товук",
+     "qty_g": 2000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кашнич",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "киви",
+     "qty_g": 500.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "KFC",
+   "kind": "hot",
+   "category": "товуқ",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "товуқ гўшт"
+    },
+    {
+     "name": "крахмал",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "паприка",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кетчуп",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сырный соус",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Тушонка",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": {
+    "qty": 1,
+    "unit": "порция"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 140.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 2.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лавровый лист",
+     "qty_g": 1.0,
+     "stock_hint": null
+    },
+    {
+     "name": "зира",
+     "qty_g": 1.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 1.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "илик суяк",
+     "qty_g": 50.0,
+     "stock_hint": "Илик суяк"
+    }
+   ]
+  },
+  {
+   "name": "Мастава",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": {
+    "qty": 40,
+    "unit": "порция"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "гуруч",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "гўшт",
+     "qty_g": 2800.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "светофор перец",
+     "qty_g": 1500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "картошка",
+     "qty_g": 2000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сабзи",
+     "qty_g": 2000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 2000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 600.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "зира",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чакка",
+     "qty_g": 500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "тамат",
+     "qty_g": 500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Картошка фри / гарнир",
+   "kind": "hot",
+   "category": null,
+   "yield_g": {
+    "qty": 1,
+    "unit": "порция"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "картошка",
+     "qty_g": 500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "приправа",
+     "qty_g": 0.5,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Уйғурча Лағмон",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": {
+    "qty": 30,
+    "unit": "порция"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 2100.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "суяк",
+     "qty_g": 50.0,
+     "stock_hint": "Илик суяк?"
+    },
+    {
+     "name": "светофор перец",
+     "qty_g": 1500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 1500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сельдерей",
+     "qty_g": null,
+     "stock_hint": null
+    },
+    {
+     "name": "басай",
+     "qty_g": 1500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "оқ турп",
+     "qty_g": 1500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок",
+     "qty_g": 200.0,
+     "stock_hint": null
+    },
+    {
+     "name": "томат паста",
+     "qty_g": 500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лағмон (хамир)",
+     "qty_g": 4500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "юлдузча",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "арпабодиён",
+     "qty_g": 30.0,
+     "stock_hint": null
+    },
+    {
+     "name": "имбир",
+     "qty_g": 30.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "уксус сенсой",
+     "qty_g": 200.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Стейк бон филе",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "бон филе",
+     "qty_g": 200.0,
+     "stock_hint": "Бон-филе"
+    },
+    {
+     "name": "светофор қалампир",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "баклажон",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кабачки",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кукуруз",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "розмарин",
+     "qty_g": null,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 0.1,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 0.1,
+     "stock_hint": null
+    },
+    {
+     "name": "тирик шампиньон",
+     "qty_g": 30.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 20.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Авғонча жиз",
+   "kind": "hot",
+   "category": "куй",
+   "yield_g": null,
+   "marinade": {
+    "gain_pct": 30.0,
+    "note": "30% купаяди"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "қўй лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лавр барги",
+     "qty_g": 1.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "светофор қалампир",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 20.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Сарёғли жиз",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": {
+    "gain_pct": 20.0,
+    "note": "20%фоиз купаяди изза мариновки"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "минерал сув",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "киви",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сариёғ",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Қуртоба",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 150.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "патир",
+     "qty_g": 240.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 250.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 150.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сариёғ",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кашнич",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "кўк пиёз",
+     "qty_g": 15.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сузма",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "шур чакка",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "калампир",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "курт",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Қозон кабоб",
+   "kind": "hot",
+   "category": "куй",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1150.0,
+     "stock_hint": "қўй лаҳм (обвалка)"
+    },
+    {
+     "name": "картошка",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 15.0,
+     "stock_hint": null
+    },
+    {
+     "name": "зира",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Вагури",
+   "kind": "hot",
+   "category": "куй",
+   "yield_g": null,
+   "marinade": {
+    "gain_pct": 30.0,
+    "note": "30% купаяди мариновка учун"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "қўй лаҳм (обвалка)"
+    },
+    {
+     "name": "масло",
+     "qty_g": 150.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "минерал сув",
+     "qty_g": 400.0,
+     "stock_hint": null
+    },
+    {
+     "name": "киви",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Жиз филе",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": {
+    "gain_pct": 20.0,
+    "note": "20%фоиз купаяди изза мариновки"
+   },
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "туз",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "минерал сув",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейски туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 150.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 100.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Шашлик марварид",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": {
+    "qty": 50,
+    "unit": "штук"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "мол гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "думба",
+     "qty_g": 700.0,
+     "stock_hint": "Думба"
+    },
+    {
+     "name": "фарш",
+     "qty_g": 5000.0,
+     "stock_hint": "Фарш"
+    }
+   ]
+  },
+  {
+   "name": "Шашлик товук канотча",
+   "kind": "hot",
+   "category": "товуқ",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "товуқ қаноти",
+     "qty_g": 5000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "майонез",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "паприка",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "минерал сув",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Шашлик — помидор",
+   "kind": "hot",
+   "category": null,
+   "yield_g": {
+    "qty": 1,
+    "unit": "дона"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "помидор",
+     "qty_g": 300.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": null,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Шашлик — думба",
+   "kind": "hot",
+   "category": "куй",
+   "yield_g": {
+    "qty": 1,
+    "unit": "сих"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "думба",
+     "qty_g": 150.0,
+     "stock_hint": "Думба"
+    },
+    {
+     "name": "паприка",
+     "qty_g": 5.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Стейк ананас билан",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "бон филе",
+     "qty_g": 200.0,
+     "stock_hint": "Бон-филе"
+    },
+    {
+     "name": "ананас (консерва)",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "розмарин",
+     "qty_g": null,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "микс салат",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соус",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Стейк рибай",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт контур",
+     "qty_g": 200.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "розмарин",
+     "qty_g": null,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мурч",
+     "qty_g": 2.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лаваш хамири",
+     "qty_g": null,
+     "stock_hint": null
+    },
+    {
+     "name": "микс салат",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "тирик шампиньон",
+     "qty_g": 30.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сливка",
+     "qty_g": 200.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Суп — чечевица (ясмиқ)",
+   "kind": "hot",
+   "category": null,
+   "yield_g": {
+    "qty": 20,
+    "unit": "порция"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "чечевица",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "қизил сабзи",
+     "qty_g": 2000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "картошка",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "зарчава",
+     "qty_g": 80.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сливка",
+     "qty_g": 500.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сухари",
+     "qty_g": 500.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Манти",
+   "kind": "hot",
+   "category": "мол",
+   "yield_g": {
+    "qty": 55,
+    "unit": "дона"
+   },
+   "marinade": null,
+   "items": [
+    {
+     "name": "гўшт",
+     "qty_g": 1000.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "ун",
+     "qty_g": 1000.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пиёз",
+     "qty_g": 1700.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чарви",
+     "qty_g": 600.0,
+     "stock_hint": "Чарви-г"
+    },
+    {
+     "name": "приправа",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Мужской каприз",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 280,
+   "marinade": null,
+   "items": [
+    {
+     "name": "варёная колбаса",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "копчёная колбаса",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "индейка",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мол гўшт",
+     "qty_g": 40.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "солёный бодринг",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "майонез",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пармезан сыр",
+     "qty_g": 20.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Гурман",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 270,
+   "marinade": null,
+   "items": [
+    {
+     "name": "шампинён",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "товуқ гўшт",
+     "qty_g": 50.0,
+     "stock_hint": "товуқ гўшт"
+    },
+    {
+     "name": "мол гўшт",
+     "qty_g": 50.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "яшил горох",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "майонез",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пармезан сыр",
+     "qty_g": 20.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Цезар",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 300,
+   "marinade": null,
+   "items": [
+    {
+     "name": "карам пекин (пекин карами)",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "товуқ гўшт",
+     "qty_g": 60.0,
+     "stock_hint": "товуқ гўшт"
+    },
+    {
+     "name": "помидор",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "сухарик",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "майонез",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "пармезан сыр",
+     "qty_g": 20.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Греческий салат",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 250,
+   "marinade": null,
+   "items": [
+    {
+     "name": "помидор",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 80.0,
+     "stock_hint": null
+    },
+    {
+     "name": "салат лист",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "қизил пиёз",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "светафор перец",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "фетакса сыр",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "оливки",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лимон сок",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 2.0,
+     "stock_hint": null
+    },
+    {
+     "name": "корейча туз",
+     "qty_g": 2.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 15.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Овощной салат",
+   "kind": "salad",
+   "category": null,
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "помидор",
+     "qty_g": 200.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг (2 хил)",
+     "qty_g": 200.0,
+     "stock_hint": null
+    },
+    {
+     "name": "яшил пиёз",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "зелень",
+     "qty_g": 30.0,
+     "stock_hint": null
+    },
+    {
+     "name": "редиска",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "калампир",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "светафор перец",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чакки",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лимон",
+     "qty_g": 50.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Весенний салат",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 250,
+   "marinade": null,
+   "items": [
+    {
+     "name": "капуста (2 хил)",
+     "qty_g": 100.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "лимон сок",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 2.0,
+     "stock_hint": null
+    },
+    {
+     "name": "зелень",
+     "qty_g": 5.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Оресткрат салат",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 250,
+   "marinade": null,
+   "items": [
+    {
+     "name": "мол гўшт",
+     "qty_g": 70.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "солёный бодринг",
+     "qty_g": 50.0,
+     "stock_hint": null
+    },
+    {
+     "name": "яшил горох",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "яшил пиёз",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "майонез",
+     "qty_g": 70.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Хрустящий баклажан",
+   "kind": "salad",
+   "category": null,
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "баклажон",
+     "qty_g": 200.0,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соус",
+     "qty_g": 20.0,
+     "stock_hint": null
+    },
+    {
+     "name": "фетакса сыр",
+     "qty_g": 40.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мьята и кенза",
+     "qty_g": 3.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Баклажан с мясом",
+   "kind": "salad",
+   "category": null,
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "баклажон",
+     "qty_g": 150.0,
+     "stock_hint": null
+    },
+    {
+     "name": "болгар қалампир (2 хил)",
+     "qty_g": 60.0,
+     "stock_hint": null
+    },
+    {
+     "name": "мол гўшт",
+     "qty_g": 50.0,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "кенза",
+     "qty_g": 9.0,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 10.0,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок",
+     "qty_g": 5.0,
+     "stock_hint": null
+    },
+    {
+     "name": "аччик паприка",
+     "qty_g": 2.0,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Чалоп Айрон",
+   "kind": "salad",
+   "category": null,
+   "yield_g": null,
+   "marinade": null,
+   "items": [
+    {
+     "name": "чакка",
+     "qty_g": 200,
+     "stock_hint": null
+    },
+    {
+     "name": "помидор",
+     "qty_g": 50,
+     "stock_hint": null
+    },
+    {
+     "name": "бодринг",
+     "qty_g": 50,
+     "stock_hint": null
+    },
+    {
+     "name": "туз",
+     "qty_g": 2,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Чиатлашиски салат",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 280,
+   "marinade": null,
+   "items": [
+    {
+     "name": "товуқ гўшт",
+     "qty_g": 50,
+     "stock_hint": "товуқ гўшт"
+    },
+    {
+     "name": "тухум",
+     "qty_g": 50,
+     "stock_hint": null
+    },
+    {
+     "name": "солёный бодринг",
+     "qty_g": 40,
+     "stock_hint": null
+    },
+    {
+     "name": "пармезан сыр",
+     "qty_g": 30,
+     "stock_hint": null
+    },
+    {
+     "name": "кукуруз",
+     "qty_g": 30,
+     "stock_hint": null
+    },
+    {
+     "name": "картошка пай",
+     "qty_g": 20,
+     "stock_hint": null
+    },
+    {
+     "name": "майонез",
+     "qty_g": 60,
+     "stock_hint": null
+    }
+   ]
+  },
+  {
+   "name": "Пекин салат",
+   "kind": "salad",
+   "category": null,
+   "yield_g": 270,
+   "marinade": null,
+   "items": [
+    {
+     "name": "бодринг",
+     "qty_g": 100,
+     "stock_hint": null
+    },
+    {
+     "name": "болгар қалампир",
+     "qty_g": 50,
+     "stock_hint": null
+    },
+    {
+     "name": "мол гўшт",
+     "qty_g": 50,
+     "stock_hint": "мол лаҳм (обвалка)"
+    },
+    {
+     "name": "яшил горох",
+     "qty_g": 40,
+     "stock_hint": null
+    },
+    {
+     "name": "соя",
+     "qty_g": 10,
+     "stock_hint": null
+    },
+    {
+     "name": "масло",
+     "qty_g": 10,
+     "stock_hint": null
+    },
+    {
+     "name": "чеснок + аччик паприка",
+     "qty_g": 3,
+     "stock_hint": null
+    },
+    {
+     "name": "кашнич",
+     "qty_g": null,
+     "stock_hint": null
+    }
+   ]
+  }
+ ],
+ "aliases": {
+  "бодринг": [
+   "бодиринг"
+  ],
+  "болгар қалампир": [
+   "светофор перец",
+   "светафор перец",
+   "светофор қалампир",
+   "болгар қалампир (2 хил)"
+  ],
+  "корейски туз": [
+   "корейча туз"
+  ],
+  "кашнич": [
+   "кенза",
+   "кензо"
+  ],
+  "майонез": [
+   "майнез"
+  ],
+  "пармезан сыр": [
+   "пармизан сир"
+  ],
+  "чакка": [
+   "чакки"
+  ],
+  "мурч": [],
+  "масло": []
+ }
+}

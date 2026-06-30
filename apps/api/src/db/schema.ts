@@ -97,3 +97,25 @@ export const products = pgTable("products", {
     .notNull()
     .defaultNow(),
 });
+
+export const recipes = pgTable("recipes", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  productId: uuid("product_id").references(() => products.id),
+  name: text("name").notNull(),
+  kind: text("kind"),
+  category: text("category"),
+  yieldG: integer("yield_g"),
+  marinade: text("marinade"),
+});
+
+export const recipeItems = pgTable("recipe_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  recipeId: uuid("recipe_id")
+    .notNull()
+    .references(() => recipes.id, { onDelete: "cascade" }),
+  componentId: uuid("component_id").references(() => products.id),
+  componentName: text("component_name").notNull(),
+  qtyG: integer("qty_g"),
+  stockHint: text("stock_hint"),
+  sort: integer("sort").notNull().default(0),
+});

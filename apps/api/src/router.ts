@@ -11,7 +11,15 @@ import {
 } from "./auth";
 import { SESSION_COOKIE } from "./context";
 import { db } from "./db/client";
-import { categories, products, sessions, stations, users } from "./db/schema";
+import {
+  categories,
+  products,
+  recipeItems,
+  recipes,
+  sessions,
+  stations,
+  users,
+} from "./db/schema";
 import { TRPCError } from "@trpc/server";
 import {
   directorProcedure,
@@ -143,6 +151,36 @@ export const appRouter = router({
             ),
           )
           .orderBy(products.type, products.name);
+      }),
+
+    recipes: protectedProcedure.query(async () => {
+      return db
+        .select({
+          id: recipes.id,
+          name: recipes.name,
+          kind: recipes.kind,
+          category: recipes.category,
+          yieldG: recipes.yieldG,
+          linked: sql<boolean>`${recipes.productId} is not null`,
+        })
+        .from(recipes)
+        .orderBy(recipes.kind, recipes.name);
+    }),
+
+    recipe: protectedProcedure
+      .input(z.object({ recipeId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        return db
+          .select({
+            componentName: recipeItems.componentName,
+            qtyG: recipeItems.qtyG,
+            stockHint: recipeItems.stockHint,
+            product: products.name,
+          })
+          .from(recipeItems)
+          .leftJoin(products, eq(recipeItems.componentId, products.id))
+          .where(eq(recipeItems.recipeId, input.recipeId))
+          .orderBy(recipeItems.sort);
       }),
   }),
 });
