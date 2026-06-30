@@ -13,8 +13,11 @@ import { SESSION_COOKIE } from "./context";
 import { db } from "./db/client";
 import {
   categories,
+  halls,
   obvalka,
   obvalkaParts,
+  orderItems,
+  orders,
   partTypes,
   products,
   recipeItems,
@@ -503,6 +506,179 @@ export const appRouter = router({
 
       return { meatCost, catalog, recipeCount, recentObvalka, thinDishes };
     }),
+  }),
+
+  pos: router({
+    halls: protectedProcedure.query(async () => {
+      return db
+        .select({
+          id: halls.id,
+          name: halls.name,
+          servicePct: halls.servicePct,
+        })
+        .from(halls)
+        .orderBy(halls.sort);
+    }),
+
+    menu: protectedProcedure.query(async () => {
+      return db
+        .select({
+          id: products.id,
+          name: products.name,
+          price: products.price,
+          category: categories.name,
+        })
+        .from(products)
+        .leftJoin(categories, eq(products.categoryId, categories.id))
+        .where(and(eq(products.active, true), sql`${products.price} > 0`))
+        .orderBy(products.type, products.name);
+    }),
+
+    openOrders: protectedProcedure.query(async () => {
+      const rows = await db
+        .select({
+          id: orders.id,
+          tableNo: orders.tableNo,
+          createdAt: orders.createdAt,
+          hall: halls.name,
+          waiter: users.name,
+          qty: sql<number>`coalesce(sum(${orderItems.qty}), 0)`,
+          total: sql<number>`coalesce(sum(${orderItems.qty} * ${orderItems.price}), 0)`,
+        })
+        .from(orders)
+        .leftJoin(halls, eq(orders.hallId, halls.id))
+        .leftJoin(users, eq(orders.waiterId, users.id))
+        .leftJoin(orderItems, eq(orderItems.orderId, orders.id))
+        .where(eq(orders.status, "open"))
+        .groupBy(orders.id, halls.name, users.name)
+        .orderBy(desc(orders.createdAt));
+      return rows.map((r) => ({ ...r, qty: Number(r.qty), total: Number(r.total) }));
+    }),
+
+    order: protectedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .query(async ({ input }) => {
+        const head = (
+          await db
+            .select({
+              id: orders.id,
+              tableNo: orders.tableNo,
+              status: orders.status,
+              servicePct: orders.servicePct,
+              createdAt: orders.createdAt,
+              closedAt: orders.closedAt,
+              hall: halls.name,
+              waiter: users.name,
+            })
+            .from(orders)
+            .leftJoin(halls, eq(orders.hallId, halls.id))
+            .leftJoin(users, eq(orders.waiterId, users.id))
+            .where(eq(orders.id, input.id))
+            .limit(1)
+        )[0];
+        if (!head) throw new TRPCError({ code: "NOT_FOUND" });
+        const items = await db
+          .select({
+            id: orderItems.id,
+            productId: orderItems.productId,
+            name: orderItems.name,
+            price: orderItems.price,
+            qty: orderItems.qty,
+          })
+          .from(orderItems)
+          .where(eq(orderItems.orderId, input.id));
+        const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+        const service = Math.round((subtotal * head.servicePct) / 100);
+        return { ...head, items, subtotal, service, total: subtotal + service };
+      }),
+
+    create: protectedProcedure
+      .input(
+        z.object({ hallId: z.string().uuid(), tableNo: z.string().optional() }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        const hall = (
+          await db.select().from(halls).where(eq(halls.id, input.hallId)).limit(1)
+        )[0];
+        if (!hall) throw new TRPCError({ code: "NOT_FOUND" });
+        const row = (
+          await db
+            .insert(orders)
+            .values({
+              hallId: hall.id,
+              tableNo: input.tableNo ?? null,
+              waiterId: ctx.user.id,
+              servicePct: hall.servicePct,
+            })
+            .returning()
+        )[0];
+        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        return { id: row.id };
+      }),
+
+    addItem: protectedProcedure
+      .input(
+        z.object({
+          orderId: z.string().uuid(),
+          productId: z.string().uuid(),
+          delta: z.number().int(),
+        }),
+      )
+      .mutation(async ({ input }) => {
+        const existing = (
+          await db
+            .select()
+            .from(orderItems)
+            .where(
+              and(
+                eq(orderItems.orderId, input.orderId),
+                eq(orderItems.productId, input.productId),
+              ),
+            )
+            .limit(1)
+        )[0];
+        if (existing) {
+          const qty = existing.qty + input.delta;
+          if (qty <= 0)
+            await db.delete(orderItems).where(eq(orderItems.id, existing.id));
+          else
+            await db
+              .update(orderItems)
+              .set({ qty })
+              .where(eq(orderItems.id, existing.id));
+        } else if (input.delta > 0) {
+          const p = (
+            await db
+              .select()
+              .from(products)
+              .where(eq(products.id, input.productId))
+              .limit(1)
+          )[0];
+          if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+          await db.insert(orderItems).values({
+            orderId: input.orderId,
+            productId: p.id,
+            name: p.name,
+            price: p.price,
+            qty: input.delta,
+          });
+        }
+        return { ok: true };
+      }),
+
+    close: protectedProcedure
+      .input(z.object({ id: z.string().uuid() }))
+      .mutation(async ({ input, ctx }) => {
+        await db
+          .update(orders)
+          .set({
+            status: "closed",
+            closedAt: new Date(),
+            closedById: ctx.user.id,
+          })
+          .where(eq(orders.id, input.id));
+        return { ok: true };
+      }),
   }),
 });
 

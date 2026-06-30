@@ -3,6 +3,7 @@ import type { SessionUser } from "./App";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
 import { Obvalka } from "./Obvalka";
+import { Pos } from "./Pos";
 import { Recipes } from "./Recipes";
 import { Taannarx } from "./Taannarx";
 import { trpc } from "./trpc";
@@ -17,6 +18,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 type Tab =
   | "dashboard"
+  | "pos"
   | "obvalka"
   | "taannarx"
   | "catalog"
@@ -32,8 +34,17 @@ export function Shell({
 }) {
   const isDirector = user.role === "director";
   const canObvalka = ["director", "manager", "buyer"].includes(user.role);
+  const canPos = ["director", "manager", "cashier", "waiter"].includes(
+    user.role,
+  );
   const [tab, setTab] = useState<Tab>(
-    isDirector ? "dashboard" : canObvalka ? "obvalka" : "catalog",
+    isDirector
+      ? "dashboard"
+      : user.role === "cashier" || user.role === "waiter"
+        ? "pos"
+        : canObvalka
+          ? "obvalka"
+          : "catalog",
   );
 
   async function logout() {
@@ -43,6 +54,7 @@ export function Shell({
 
   const tabs: { key: Tab; label: string }[] = [
     ...(isDirector ? [{ key: "dashboard" as Tab, label: "Бошқарув" }] : []),
+    ...(canPos ? [{ key: "pos" as Tab, label: "Касса" }] : []),
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
     ...(isDirector ? [{ key: "taannarx" as Tab, label: "Таннарх" }] : []),
     { key: "catalog", label: "Каталог" },
@@ -87,6 +99,7 @@ export function Shell({
 
       <main className="mx-auto max-w-4xl p-5">
         {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
+        {tab === "pos" && <Pos />}
         {tab === "obvalka" && <Obvalka />}
         {tab === "taannarx" && <Taannarx />}
         {tab === "catalog" && <Catalog />}

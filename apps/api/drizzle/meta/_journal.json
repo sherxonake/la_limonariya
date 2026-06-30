@@ -43,6 +43,13 @@
       "when": 1782823990188,
       "tag": "0005_flowery_human_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1782826365276,
+      "tag": "0006_awesome_stardust",
+      "breakpoints": true
     }
   ]
 }

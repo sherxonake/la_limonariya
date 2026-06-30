@@ -160,3 +160,40 @@ export const obvalkaParts = pgTable("obvalka_parts", {
   name: text("name").notNull(),
   weightG: integer("weight_g").notNull(),
 });
+
+export const halls = pgTable("halls", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  name: text("name").notNull().unique(),
+  servicePct: integer("service_pct").notNull().default(0),
+  sort: integer("sort").notNull().default(0),
+});
+
+export const orderStatus = pgEnum("order_status", ["open", "closed"]);
+
+export const orders = pgTable("orders", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  hallId: uuid("hall_id")
+    .notNull()
+    .references(() => halls.id),
+  tableNo: text("table_no"),
+  waiterId: uuid("waiter_id").references(() => users.id),
+  status: orderStatus("status").notNull().default("open"),
+  servicePct: integer("service_pct").notNull().default(0),
+  branchId: uuid("branch_id").references(() => branches.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  closedAt: timestamp("closed_at", { withTimezone: true }),
+  closedById: uuid("closed_by_id").references(() => users.id),
+});
+
+export const orderItems = pgTable("order_items", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  orderId: uuid("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  productId: uuid("product_id").references(() => products.id),
+  name: text("name").notNull(),
+  price: integer("price").notNull().default(0),
+  qty: integer("qty").notNull().default(1),
+});
