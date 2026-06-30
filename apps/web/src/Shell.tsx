@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionUser } from "./App";
 import { Catalog } from "./Catalog";
+import { Dashboard } from "./Dashboard";
 import { Obvalka } from "./Obvalka";
 import { Recipes } from "./Recipes";
 import { Taannarx } from "./Taannarx";
@@ -14,7 +15,13 @@ const ROLE_LABEL: Record<string, string> = {
   waiter: "Официант",
 };
 
-type Tab = "obvalka" | "taannarx" | "catalog" | "recipes" | "staff";
+type Tab =
+  | "dashboard"
+  | "obvalka"
+  | "taannarx"
+  | "catalog"
+  | "recipes"
+  | "staff";
 
 export function Shell({
   user,
@@ -23,8 +30,11 @@ export function Shell({
   user: SessionUser;
   onLogout: () => void;
 }) {
+  const isDirector = user.role === "director";
   const canObvalka = ["director", "manager", "buyer"].includes(user.role);
-  const [tab, setTab] = useState<Tab>(canObvalka ? "obvalka" : "catalog");
+  const [tab, setTab] = useState<Tab>(
+    isDirector ? "dashboard" : canObvalka ? "obvalka" : "catalog",
+  );
 
   async function logout() {
     await trpc.auth.logout.mutate().catch(() => {});
@@ -32,15 +42,12 @@ export function Shell({
   }
 
   const tabs: { key: Tab; label: string }[] = [
+    ...(isDirector ? [{ key: "dashboard" as Tab, label: "Бошқарув" }] : []),
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
-    ...(user.role === "director"
-      ? [{ key: "taannarx" as Tab, label: "Таннарх" }]
-      : []),
+    ...(isDirector ? [{ key: "taannarx" as Tab, label: "Таннарх" }] : []),
     { key: "catalog", label: "Каталог" },
     { key: "recipes", label: "Рецептлар" },
-    ...(user.role === "director"
-      ? [{ key: "staff" as Tab, label: "Ходимлар" }]
-      : []),
+    ...(isDirector ? [{ key: "staff" as Tab, label: "Ходимлар" }] : []),
   ];
 
   return (
@@ -79,6 +86,7 @@ export function Shell({
       </header>
 
       <main className="mx-auto max-w-4xl p-5">
+        {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
         {tab === "obvalka" && <Obvalka />}
         {tab === "taannarx" && <Taannarx />}
         {tab === "catalog" && <Catalog />}
