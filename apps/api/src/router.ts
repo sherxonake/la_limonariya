@@ -1,4 +1,4 @@
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -25,6 +25,7 @@ import {
   recipes,
   sessions,
   stations,
+  stockMovements,
   users,
 } from "./db/schema";
 import { computeObvalka } from "./obvalka-calc";
@@ -391,36 +392,66 @@ export const appRouter = router({
         }),
       )
       .mutation(async ({ input, ctx }) => {
-        const row = (
-          await db
-            .insert(obvalka)
-            .values({
-              carcassType: input.carcassType,
-              weightG: input.weightG,
-              pricePerKg: input.pricePerKg,
-              supplier: input.supplier ?? null,
-              note: input.note ?? null,
-              createdById: ctx.user.id,
-            })
-            .returning()
-        )[0];
-        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        return db.transaction(async (tx) => {
+          const row = (
+            await tx
+              .insert(obvalka)
+              .values({
+                carcassType: input.carcassType,
+                weightG: input.weightG,
+                pricePerKg: input.pricePerKg,
+                supplier: input.supplier ?? null,
+                note: input.note ?? null,
+                createdById: ctx.user.id,
+              })
+              .returning()
+          )[0];
+          if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-        const ptList = await db
-          .select()
-          .from(partTypes)
-          .where(eq(partTypes.carcassType, input.carcassType));
-        const ptMap = new Map(ptList.map((p) => [p.id, p]));
-        const toInsert = input.parts
-          .filter((p) => p.weightG > 0)
-          .map((p) => ({
-            obvalkaId: row.id,
-            partTypeId: p.partTypeId,
-            name: ptMap.get(p.partTypeId)?.name ?? "?",
-            weightG: p.weightG,
-          }));
-        if (toInsert.length) await db.insert(obvalkaParts).values(toInsert);
-        return { id: row.id };
+          const ptList = await tx
+            .select()
+            .from(partTypes)
+            .where(eq(partTypes.carcassType, input.carcassType));
+          const ptMap = new Map(ptList.map((p) => [p.id, p]));
+          const parts = input.parts.filter((p) => p.weightG > 0);
+          if (parts.length)
+            await tx.insert(obvalkaParts).values(
+              parts.map((p) => ({
+                obvalkaId: row.id,
+                partTypeId: p.partTypeId,
+                name: ptMap.get(p.partTypeId)?.name ?? "?",
+                weightG: p.weightG,
+              })),
+            );
+
+          // Carcass-level meat inflow = sum of sellable (non-waste) flesh.
+          const sellableG = parts.reduce((s, p) => {
+            const pt = ptMap.get(p.partTypeId);
+            return pt && !pt.isWaste ? s + p.weightG : s;
+          }, 0);
+          const carcassName =
+            input.carcassType === "mol" ? "Мол лаҳм" : "Қўй лаҳм";
+          const cp = (
+            await tx
+              .select({ id: products.id })
+              .from(products)
+              .where(eq(products.name, carcassName))
+              .orderBy(products.createdAt)
+              .limit(1)
+          )[0];
+          if (cp && sellableG > 0)
+            await tx.insert(stockMovements).values({
+              productId: cp.id,
+              type: "obvalka",
+              qty: sellableG,
+              unit: "g",
+              refType: "obvalka",
+              refId: row.id,
+              createdById: ctx.user.id,
+            });
+
+          return { id: row.id };
+        });
       }),
   }),
 
@@ -694,21 +725,168 @@ export const appRouter = router({
         }),
       )
       .mutation(async ({ input, ctx }) => {
-        await db
-          .update(orders)
-          .set({
-            status: "closed",
-            closedAt: new Date(),
-            closedById: ctx.user.id,
-          })
-          .where(eq(orders.id, input.id));
-        const pays = (input.payments ?? []).filter((p) => p.amount > 0);
-        if (pays.length)
-          await db
-            .insert(orderPayments)
-            .values(pays.map((p) => ({ orderId: input.id, ...p })));
-        return { ok: true };
+        return db.transaction(async (tx) => {
+          // Idempotent: only the tx that flips open→closed writes payments + списание.
+          const flipped = await tx
+            .update(orders)
+            .set({
+              status: "closed",
+              closedAt: new Date(),
+              closedById: ctx.user.id,
+            })
+            .where(and(eq(orders.id, input.id), eq(orders.status, "open")))
+            .returning({ id: orders.id });
+          if (flipped.length === 0)
+            return { ok: true, alreadyClosed: true, deducted: 0, skipped: 0 };
+
+          const pays = (input.payments ?? []).filter((p) => p.amount > 0);
+          if (pays.length)
+            await tx
+              .insert(orderPayments)
+              .values(pays.map((p) => ({ orderId: input.id, ...p })));
+
+          // Carcass meat balances (meat is tracked at carcass, not cut, level).
+          const carc = await tx
+            .select({ id: products.id, name: products.name })
+            .from(products)
+            .where(inArray(products.name, ["Мол лаҳм", "Қўй лаҳм"]))
+            .orderBy(products.createdAt);
+          const molId = carc.find((c) => c.name === "Мол лаҳм")?.id ?? null;
+          const qoyId = carc.find((c) => c.name === "Қўй лаҳм")?.id ?? null;
+
+          // product type/unit lookup — only deduct stock-leaf, non-dona components (in grams)
+          const prodMap = new Map(
+            (
+              await tx
+                .select({
+                  id: products.id,
+                  type: products.type,
+                  unit: products.unit,
+                })
+                .from(products)
+            ).map((p) => [p.id, p]),
+          );
+
+          const items = await tx
+            .select({
+              productId: orderItems.productId,
+              name: orderItems.name,
+              qty: orderItems.qty,
+              ptype: products.type,
+              punit: products.unit,
+              soldByWeight: products.soldByWeight,
+            })
+            .from(orderItems)
+            .leftJoin(products, eq(orderItems.productId, products.id))
+            .where(eq(orderItems.orderId, input.id));
+
+          const moves: (typeof stockMovements.$inferInsert)[] = [];
+          const skippedNames = new Set<string>();
+
+          for (const it of items) {
+            if (!it.productId) {
+              skippedNames.add(it.name);
+              continue;
+            }
+            if (it.ptype === "goods") {
+              // goods are sold per piece; only deduct dona-unit goods (native count)
+              if (it.punit === "dona")
+                moves.push({
+                  productId: it.productId,
+                  type: "sale_writeoff",
+                  qty: -it.qty,
+                  unit: "dona",
+                  refType: "order",
+                  refId: input.id,
+                  createdById: ctx.user.id,
+                });
+              else skippedNames.add(it.name);
+              continue;
+            }
+            if (it.soldByWeight) {
+              skippedNames.add(it.name);
+              continue;
+            }
+            const rec = (
+              await tx
+                .select({ id: recipes.id })
+                .from(recipes)
+                .where(eq(recipes.productId, it.productId))
+                .limit(1)
+            )[0];
+            if (!rec) {
+              skippedNames.add(it.name);
+              continue;
+            }
+            const ris = await tx
+              .select()
+              .from(recipeItems)
+              .where(eq(recipeItems.recipeId, rec.id));
+            for (const ri of ris) {
+              if (ri.qtyG == null) continue;
+              const hint = ri.stockHint ?? "";
+              let target: string | null = null;
+              if (/обвалка|лаҳм/i.test(hint)) {
+                // carcass meat → grams against the 2 carcass products
+                target = /мол/i.test(hint)
+                  ? molId
+                  : /қўй|қуй|куй/i.test(hint)
+                    ? qoyId
+                    : null;
+              } else if (ri.componentId) {
+                // mapped ingredient: only a stock-leaf, weight-unit product (grams)
+                const c = prodMap.get(ri.componentId);
+                if (c && c.type !== "dish" && c.type !== "semi" && c.unit !== "dona")
+                  target = ri.componentId;
+              }
+
+              if (target)
+                moves.push({
+                  productId: target,
+                  type: "sale_writeoff",
+                  qty: -(ri.qtyG * it.qty),
+                  unit: "g",
+                  refType: "order",
+                  refId: input.id,
+                  note: ri.componentName,
+                  createdById: ctx.user.id,
+                });
+              else skippedNames.add(ri.componentName);
+            }
+          }
+
+          if (moves.length) await tx.insert(stockMovements).values(moves);
+          return {
+            ok: true,
+            deducted: moves.length,
+            skipped: skippedNames.size,
+            skippedNames: [...skippedNames].slice(0, 12),
+          };
+        });
       }),
+  }),
+
+  stock: router({
+    onHand: protectedProcedure.query(async () => {
+      const rows = await db
+        .select({
+          productId: stockMovements.productId,
+          name: products.name,
+          type: products.type,
+          unit: products.unit,
+          onHand: sql<number>`sum(${stockMovements.qty})`,
+        })
+        .from(stockMovements)
+        .innerJoin(products, eq(stockMovements.productId, products.id))
+        .groupBy(
+          stockMovements.productId,
+          products.name,
+          products.type,
+          products.unit,
+        )
+        .orderBy(products.type, products.name);
+      return rows.map((r) => ({ ...r, onHand: Number(r.onHand) }));
+    }),
   }),
 });
 

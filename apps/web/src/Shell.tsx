@@ -3,6 +3,7 @@ import type { SessionUser } from "./App";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
 import { Obvalka } from "./Obvalka";
+import { Ombor } from "./Ombor";
 import { Pos } from "./Pos";
 import { Recipes } from "./Recipes";
 import { Taannarx } from "./Taannarx";
@@ -20,6 +21,7 @@ type Tab =
   | "dashboard"
   | "pos"
   | "obvalka"
+  | "ombor"
   | "taannarx"
   | "catalog"
   | "recipes"
@@ -56,6 +58,9 @@ export function Shell({
     ...(isDirector ? [{ key: "dashboard" as Tab, label: "Бошқарув" }] : []),
     ...(canPos ? [{ key: "pos" as Tab, label: "Касса" }] : []),
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
+    ...(["director", "manager"].includes(user.role)
+      ? [{ key: "ombor" as Tab, label: "Омбор" }]
+      : []),
     ...(isDirector ? [{ key: "taannarx" as Tab, label: "Таннарх" }] : []),
     { key: "catalog", label: "Каталог" },
     { key: "recipes", label: "Рецептлар" },
@@ -101,6 +106,7 @@ export function Shell({
         {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
         {tab === "pos" && <Pos />}
         {tab === "obvalka" && <Obvalka />}
+        {tab === "ombor" && <Ombor />}
         {tab === "taannarx" && <Taannarx />}
         {tab === "catalog" && <Catalog />}
         {tab === "recipes" && <Recipes />}

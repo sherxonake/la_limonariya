@@ -1,5 +1,6 @@
 import {
   boolean,
+  index,
   integer,
   pgEnum,
   pgTable,
@@ -214,3 +215,39 @@ export const orderPayments = pgTable("order_payments", {
   method: paymentMethod("method").notNull(),
   amount: integer("amount").notNull(),
 });
+
+export const movementType = pgEnum("movement_type", [
+  "purchase",
+  "obvalka",
+  "production",
+  "sale_writeoff",
+  "inventory_adjust",
+  "loss",
+  "transfer",
+]);
+
+// Append-only stock ledger. on-hand = SUM(qty) per product. qty is SIGNED
+// (+ inflow, − outflow), in the product's base unit (grams for kg/g/l/ml, dona for dona).
+export const stockMovements = pgTable(
+  "stock_movements",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id),
+    type: movementType("type").notNull(),
+    qty: integer("qty").notNull(),
+    unit: productUnit("unit").notNull(),
+    refType: text("ref_type"),
+    refId: uuid("ref_id"),
+    note: text("note"),
+    createdById: uuid("created_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [
+    index("sm_product_idx").on(t.productId),
+    index("sm_ref_idx").on(t.refType, t.refId),
+  ],
+);
