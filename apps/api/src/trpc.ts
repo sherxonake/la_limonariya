@@ -15,3 +15,9 @@ export const directorProcedure = protectedProcedure.use(({ ctx, next }) => {
   if (ctx.user.role !== "director") throw new TRPCError({ code: "FORBIDDEN" });
   return next();
 });
+
+export const managerProcedure = protectedProcedure.use(({ ctx, next }) => {
+  if (ctx.user.role !== "director" && ctx.user.role !== "manager")
+    throw new TRPCError({ code: "FORBIDDEN" });
+  return next();
+});

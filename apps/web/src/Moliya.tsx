@@ -1,0 +1,564 @@
+import { useCallback, useEffect, useState } from "react";
+import { trpc } from "./trpc";
+
+const fmt = (n: number) => Math.round(n).toLocaleString("ru-RU");
+const pad = (n: number) => String(n).padStart(2, "0");
+
+const CAT: Record<string, string> = {
+  ijara: "Ижара",
+  gaz: "Газ",
+  elektr: "Свет",
+  ish_haqi: "Ойлик",
+  jihoz: "Жиҳоз",
+  boshqa: "Бошқа",
+};
+const CATS = Object.keys(CAT);
+const METHOD: Record<string, string> = {
+  cash: "Нақд",
+  card: "Карта",
+  click: "Click",
+  payme: "Payme",
+  debt: "Қарз",
+};
+
+// Operational day in Asia/Tashkent (UTC+5, no DST), 06:00 cut — matches server time.ts
+// regardless of the browser's OS timezone.
+function todayBiz(): string {
+  const t = new Date(Date.now() + 5 * 3600 * 1000);
+  if (t.getUTCHours() < 6) t.setUTCDate(t.getUTCDate() - 1);
+  return `${t.getUTCFullYear()}-${pad(t.getUTCMonth() + 1)}-${pad(t.getUTCDate())}`;
+}
+function shiftDay(day: string, delta: number): string {
+  const [y = 0, m = 1, d = 1] = day.split("-").map(Number);
+  const dt = new Date(Date.UTC(y, m - 1, d + delta));
+  return `${dt.getUTCFullYear()}-${pad(dt.getUTCMonth() + 1)}-${pad(dt.getUTCDate())}`;
+}
+
+function ErrBox({ onRetry }: { onRetry: () => void }) {
+  return (
+    <div className="rounded-xl border bg-white px-4 py-8 text-center text-sm text-zinc-500">
+      Юкланмади.{" "}
+      <button onClick={onRetry} className="font-medium text-emerald-600 underline">
+        Қайта уриниш
+      </button>
+    </div>
+  );
+}
+
+type Sub = "day" | "expense" | "pnl" | "debt";
+
+export function Moliya() {
+  const [sub, setSub] = useState<Sub>("day");
+  const tabs: { k: Sub; label: string }[] = [
+    { k: "day", label: "Кунлик ёпилиш" },
+    { k: "expense", label: "Харажат" },
+    { k: "pnl", label: "P&L" },
+    { k: "debt", label: "Қарзлар" },
+  ];
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap gap-1.5">
+        {tabs.map((t) => (
+          <button
+            key={t.k}
+            onClick={() => setSub(t.k)}
+            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+              sub === t.k ? "bg-emerald-600 text-white" : "bg-white text-zinc-500 hover:bg-zinc-100"
+            }`}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {sub === "day" && <DayClose />}
+      {sub === "expense" && <Expenses />}
+      {sub === "pnl" && <Pnl />}
+      {sub === "debt" && <Debts />}
+    </div>
+  );
+}
+
+function Big({
+  label,
+  value,
+  sub,
+  tone,
+}: {
+  label: string;
+  value: string;
+  sub?: string;
+  tone?: "good" | "bad" | "plain";
+}) {
+  const c =
+    tone === "good"
+      ? "border-emerald-200 bg-emerald-50 text-emerald-700"
+      : tone === "bad"
+        ? "border-red-200 bg-red-50 text-red-700"
+        : "bg-white";
+  return (
+    <div className={`rounded-xl border p-3 ${c}`}>
+      <div className="text-xs text-zinc-500">{label}</div>
+      <div className="mt-0.5 text-xl font-bold tabular-nums">{value}</div>
+      {sub && <div className="text-xs text-zinc-400">{sub}</div>}
+    </div>
+  );
+}
+
+function DayPicker({ day, setDay }: { day: string; setDay: (d: string) => void }) {
+  return (
+    <div className="flex items-center gap-2">
+      <button onClick={() => setDay(shiftDay(day, -1))} className="rounded-lg border px-2.5 py-1.5 text-sm hover:bg-zinc-100">‹</button>
+      <input
+        type="date"
+        value={day}
+        max={todayBiz()}
+        onChange={(e) => e.target.value && setDay(e.target.value)}
+        className="rounded-lg border px-3 py-1.5 text-sm outline-none focus:border-emerald-500"
+      />
+      <button onClick={() => setDay(shiftDay(day, 1))} disabled={day >= todayBiz()} className="rounded-lg border px-2.5 py-1.5 text-sm hover:bg-zinc-100 disabled:opacity-30">›</button>
+      <button onClick={() => setDay(todayBiz())} className="rounded-lg border px-3 py-1.5 text-sm text-zinc-500 hover:bg-zinc-100">Бугун</button>
+    </div>
+  );
+}
+
+type Fin = {
+  revenue: number;
+  byMethod: Record<string, number>;
+  cardTax: number;
+  guestDebt: number;
+  checks: number;
+  avgCheck: number;
+  cogs: number;
+  cogsPartial: boolean;
+  unpricedCount: number;
+  unpricedNames: string[];
+  opex: number;
+  opexByCat: Record<string, number>;
+  sofFoyda: number;
+};
+
+function FinView({ f }: { f: Fin }) {
+  const margin = f.revenue > 0 ? Math.round((f.sofFoyda / f.revenue) * 100) : null;
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <Big label="Тушум" value={fmt(f.revenue)} sub="so'm" />
+        <Big
+          label="Соф фойда"
+          value={fmt(f.sofFoyda)}
+          sub={margin != null ? `${margin}%` : "so'm"}
+          tone={f.sofFoyda >= 0 ? "good" : "bad"}
+        />
+        <Big label="Себестоимость" value={fmt(f.cogs)} sub={f.cogsPartial ? "қисман ⚠️" : "списание"} />
+        <Big label="Харажат (OPEX)" value={fmt(f.opex)} sub="so'm" />
+      </div>
+
+      <div className="grid gap-4 lg:grid-cols-2">
+        <div className="overflow-hidden rounded-xl border bg-white">
+          <div className="border-b px-4 py-2.5 text-sm font-semibold">Тўлов турлари</div>
+          <div className="divide-y text-sm">
+            {Object.keys(METHOD)
+              .filter((m) => m !== "debt" && (f.byMethod[m] ?? 0) > 0)
+              .map((m) => (
+                <Row key={m} l={METHOD[m] ?? m} v={fmt(f.byMethod[m] ?? 0)} />
+              ))}
+            {f.cardTax > 0 && <Row l="Солиқ (4% карта)" v={`−${fmt(f.cardTax)}`} muted />}
+            {f.guestDebt > 0 && <Row l="Меҳмон қарзи (олинмаган)" v={fmt(f.guestDebt)} muted />}
+            <Row l="Чек" v={`${f.checks} та · ўрт. ${fmt(f.avgCheck)}`} muted />
+          </div>
+        </div>
+
+        <div className="overflow-hidden rounded-xl border bg-white">
+          <div className="border-b px-4 py-2.5 text-sm font-semibold">Харажатлар</div>
+          {Object.keys(f.opexByCat).length === 0 ? (
+            <div className="px-4 py-6 text-center text-sm text-zinc-400">харажат йўқ</div>
+          ) : (
+            <div className="divide-y text-sm">
+              {Object.entries(f.opexByCat).map(([c, v]) => (
+                <Row key={c} l={CAT[c] ?? c} v={fmt(v)} />
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {f.cogsPartial && (
+        <div className="rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-700">
+          ⚠️ Себестоимость <b>қисман</b> — списание асосида (салат/ичимлик/тарозили
+          таомлар кирмайди), шунинг учун реал соф фойда бундан бироз пастроқ.
+          {f.unpricedCount > 0 && (
+            <>
+              {" "}
+              {f.unpricedCount} та маҳсулот нархсиз: {f.unpricedNames.join(", ")} —
+              харид киритсангиз аниқлашади.
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+function Row({ l, v, muted }: { l: string; v: string; muted?: boolean }) {
+  return (
+    <div className="flex items-center justify-between px-4 py-2">
+      <span className={muted ? "text-zinc-400" : ""}>{l}</span>
+      <span className={`tabular-nums ${muted ? "text-zinc-400" : "font-medium"}`}>{v}</span>
+    </div>
+  );
+}
+
+function DayClose() {
+  const [day, setDay] = useState(todayBiz());
+  const [f, setF] = useState<Fin | null>(null);
+  const [err, setErr] = useState(false);
+  const load = useCallback(() => {
+    setF(null);
+    setErr(false);
+    trpc.finance.dayClose.query({ day }).then(setF).catch(() => setErr(true));
+  }, [day]);
+  useEffect(() => {
+    load();
+  }, [load]);
+  return (
+    <div className="space-y-4">
+      <DayPicker day={day} setDay={setDay} />
+      {err ? (
+        <ErrBox onRetry={load} />
+      ) : !f ? (
+        <div className="p-6 text-center text-zinc-400">⏳</div>
+      ) : (
+        <FinView f={f} />
+      )}
+    </div>
+  );
+}
+
+type Exp = {
+  id: string;
+  category: string;
+  amount: number;
+  method: string;
+  recurring: boolean;
+  note: string | null;
+  spentAt: string;
+};
+
+function Expenses() {
+  const [day, setDay] = useState(todayBiz());
+  const [data, setData] = useState<{ rows: Exp[]; total: number } | null>(null);
+  const [err, setErr] = useState(false);
+  const refresh = useCallback(() => {
+    setData(null);
+    setErr(false);
+    trpc.finance.expenses.list
+      .query({ day })
+      .then((d) => setData({ rows: d.rows, total: d.total }))
+      .catch(() => setErr(true));
+  }, [day]);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  return (
+    <div className="space-y-4">
+      <DayPicker day={day} setDay={setDay} />
+      <ExpenseForm day={day} onSaved={refresh} />
+      <div className="overflow-hidden rounded-xl border bg-white">
+        <div className="flex items-center justify-between border-b px-4 py-2.5 text-sm">
+          <span className="font-semibold">Харажатлар</span>
+          <span className="font-medium tabular-nums">{fmt(data?.total ?? 0)} so'm</span>
+        </div>
+        {err ? (
+          <div className="px-4 py-6 text-center text-sm text-zinc-500">
+            Юкланмади.{" "}
+            <button onClick={refresh} className="font-medium text-emerald-600 underline">қайта</button>
+          </div>
+        ) : !data ? (
+          <div className="px-4 py-6 text-center text-zinc-400">⏳</div>
+        ) : data.rows.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-zinc-400">бу кунда харажат йўқ</div>
+        ) : (
+          <div className="divide-y text-sm">
+            {data.rows.map((e) => (
+              <div key={e.id} className="flex items-center justify-between px-4 py-2">
+                <span className="flex items-center gap-2">
+                  <span className="font-medium">{CAT[e.category] ?? e.category}</span>
+                  {e.recurring && <span className="rounded-full bg-zinc-100 px-1.5 py-0.5 text-[10px] text-zinc-500">такрорий</span>}
+                  {e.note && <span className="text-xs text-zinc-400">{e.note}</span>}
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="tabular-nums font-medium">{fmt(e.amount)}</span>
+                  <button
+                    onClick={() => trpc.finance.expenses.delete.mutate({ id: e.id }).then(refresh)}
+                    className="text-zinc-300 hover:text-red-500"
+                  >
+                    ✕
+                  </button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ExpenseForm({ day, onSaved }: { day: string; onSaved: () => void }) {
+  const [cat, setCat] = useState("ijara");
+  const [amount, setAmount] = useState("");
+  const [recurring, setRecurring] = useState(false);
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    const amt = Math.round(Number(amount) || 0);
+    if (amt <= 0) return;
+    setBusy(true);
+    try {
+      await trpc.finance.expenses.create.mutate({
+        category: cat as "ijara",
+        amount: amt,
+        recurring,
+        note: note.trim() || undefined,
+        day,
+      });
+      setAmount("");
+      setNote("");
+      setRecurring(false);
+      onSaved();
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="space-y-3 rounded-xl border bg-white p-4">
+      <div className="text-sm font-semibold">Янги харажат</div>
+      <div className="flex flex-wrap gap-1.5">
+        {CATS.map((c) => (
+          <button
+            key={c}
+            onClick={() => setCat(c)}
+            className={`rounded-lg px-3 py-1.5 text-sm ${cat === c ? "bg-zinc-900 text-white" : "bg-zinc-100 text-zinc-600 hover:bg-zinc-200"}`}
+          >
+            {CAT[c]}
+          </button>
+        ))}
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
+        <input
+          inputMode="numeric"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value.replace(/\D/g, ""))}
+          placeholder="сумма (so'm)"
+          className="w-40 rounded-lg border px-3 py-2 text-sm tabular-nums outline-none focus:border-emerald-500"
+        />
+        <input
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          placeholder="изоҳ (ихтиёрий)"
+          className="flex-1 rounded-lg border px-3 py-2 text-sm outline-none focus:border-emerald-500"
+        />
+        <label className="flex items-center gap-1.5 text-sm text-zinc-500">
+          <input type="checkbox" checked={recurring} onChange={(e) => setRecurring(e.target.checked)} />
+          такрорий
+        </label>
+        <button
+          onClick={save}
+          disabled={busy || !amount}
+          className="rounded-lg bg-emerald-600 px-5 py-2 text-sm font-medium text-white disabled:opacity-40"
+        >
+          Сақлаш
+        </button>
+      </div>
+    </div>
+  );
+}
+
+type Pnl = Fin & {
+  days: number;
+  dailyAvg: number;
+  marginPct: number | null;
+  breakEvenPerDay: number | null;
+};
+
+function Pnl() {
+  const [from, setFrom] = useState(shiftDay(todayBiz(), -6));
+  const [to, setTo] = useState(todayBiz());
+  const [p, setP] = useState<Pnl | null>(null);
+  const [err, setErr] = useState(false);
+  const load = useCallback(() => {
+    setP(null);
+    setErr(false);
+    trpc.finance.pnl.query({ from, to }).then(setP).catch(() => setErr(true));
+  }, [from, to]);
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const quick = (n: number) => {
+    setTo(todayBiz());
+    setFrom(shiftDay(todayBiz(), -(n - 1)));
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        <button onClick={() => quick(1)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-zinc-100">Бугун</button>
+        <button onClick={() => quick(7)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-zinc-100">7 кун</button>
+        <button onClick={() => quick(30)} className="rounded-lg border px-3 py-1.5 text-sm hover:bg-zinc-100">30 кун</button>
+        <input type="date" value={from} max={to} onChange={(e) => e.target.value && setFrom(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm outline-none focus:border-emerald-500" />
+        <span className="text-zinc-400">—</span>
+        <input type="date" value={to} max={todayBiz()} onChange={(e) => e.target.value && setTo(e.target.value)} className="rounded-lg border px-2 py-1.5 text-sm outline-none focus:border-emerald-500" />
+      </div>
+
+      {err ? (
+        <ErrBox onRetry={load} />
+      ) : !p ? (
+        <div className="p-6 text-center text-zinc-400">⏳</div>
+      ) : (
+        <>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            <Big label={`Тушум (${p.days} кун)`} value={fmt(p.revenue)} sub={`ўрт. ${fmt(p.dailyAvg)}/кун`} />
+            <Big label="Соф фойда" value={fmt(p.sofFoyda)} sub={p.marginPct != null ? `${p.marginPct}%` : ""} tone={p.sofFoyda >= 0 ? "good" : "bad"} />
+            <Big label="Себестоимость" value={fmt(p.cogs)} sub={p.cogsPartial ? "қисман ⚠️" : ""} />
+            <Big label="Break-even" value={p.breakEvenPerDay != null ? fmt(p.breakEvenPerDay) : "—"} sub={p.cogsPartial ? "⚠️ қисман COGS" : "so'm/кун керак"} />
+          </div>
+          <FinView f={p} />
+          <div className="rounded-xl bg-zinc-50 px-4 py-3 text-xs text-zinc-500">
+            📊 Эга баҳоси (2026-06): ~21 млн/кун тушум · ~27% фойда · break-even
+            ~8.9 млн/кун. Юқоридагилар реал списание + харажатдан ҳисобланади.
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+type Debt = {
+  supplier: { id: string; supplier: string | null; total: number; paidTotal: number; outstanding: number; createdAt: string }[];
+  supplierTotal: number;
+  guest: { orderId: string; tableNo: string | null; hall: string | null; closedAt: string | null; amount: number }[];
+  guestTotal: number;
+};
+
+function Debts() {
+  const [d, setD] = useState<Debt | null>(null);
+  const [err, setErr] = useState(false);
+  const [pay, setPay] = useState<Debt["supplier"][number] | null>(null);
+  const refresh = useCallback(() => {
+    setErr(false);
+    trpc.finance.debts.query().then(setD).catch(() => setErr(true));
+  }, []);
+  useEffect(() => {
+    refresh();
+  }, [refresh]);
+
+  if (err) return <ErrBox onRetry={refresh} />;
+  if (!d) return <div className="p-6 text-center text-zinc-400">⏳</div>;
+  return (
+    <div className="space-y-4">
+      <div className="overflow-hidden rounded-xl border bg-white">
+        <div className="flex items-center justify-between border-b px-4 py-2.5 text-sm">
+          <span className="font-semibold">🔴 Биз қарздормиз (етказувчи)</span>
+          <span className="font-medium tabular-nums text-red-600">{fmt(d.supplierTotal)} so'm</span>
+        </div>
+        {d.supplier.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-zinc-400">қарз йўқ — ҳаммаси тўланган</div>
+        ) : (
+          <div className="divide-y text-sm">
+            {d.supplier.map((s) => (
+              <div key={s.id} className="flex items-center justify-between px-4 py-2">
+                <span>
+                  <span className="font-medium">{s.supplier ?? "Етказувчи"}</span>{" "}
+                  <span className="text-xs text-zinc-400">{fmt(s.paidTotal)} / {fmt(s.total)}</span>
+                </span>
+                <span className="flex items-center gap-3">
+                  <span className="tabular-nums font-medium text-red-600">{fmt(s.outstanding)}</span>
+                  <button onClick={() => setPay(s)} className="rounded-lg bg-emerald-600 px-3 py-1 text-xs font-medium text-white">Тўлов</button>
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div className="overflow-hidden rounded-xl border bg-white">
+        <div className="flex items-center justify-between border-b px-4 py-2.5 text-sm">
+          <span className="font-semibold">🟡 Бизга қарздор (меҳмон)</span>
+          <span className="font-medium tabular-nums">{fmt(d.guestTotal)} so'm</span>
+        </div>
+        {d.guest.length === 0 ? (
+          <div className="px-4 py-6 text-center text-sm text-zinc-400">меҳмон қарзи йўқ</div>
+        ) : (
+          <div className="divide-y text-sm">
+            {d.guest.map((g) => (
+              <div key={g.orderId} className="flex items-center justify-between px-4 py-2">
+                <span className="text-zinc-500">
+                  {g.hall ?? "—"} {g.tableNo ? `· стол ${g.tableNo}` : ""}
+                </span>
+                <span className="tabular-nums font-medium">{fmt(g.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {pay && <PayModal s={pay} onClose={() => setPay(null)} onPaid={() => { setPay(null); refresh(); }} />}
+    </div>
+  );
+}
+
+function PayModal({
+  s,
+  onClose,
+  onPaid,
+}: {
+  s: Debt["supplier"][number];
+  onClose: () => void;
+  onPaid: () => void;
+}) {
+  const [amount, setAmount] = useState(String(s.outstanding));
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState<string | null>(null);
+
+  async function pay() {
+    const amt = Math.round(Number(amount) || 0);
+    if (amt <= 0) return;
+    setBusy(true);
+    setErr(null);
+    try {
+      await trpc.finance.paySupplier.mutate({ purchaseId: s.id, amount: amt });
+      onPaid();
+    } catch (e: unknown) {
+      setErr(e instanceof Error ? e.message : "Хато");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 grid place-items-center bg-black/40 p-4" onClick={onClose}>
+      <div className="w-full max-w-xs space-y-4 rounded-2xl bg-white p-5" onClick={(e) => e.stopPropagation()}>
+        <div>
+          <h3 className="font-semibold">{s.supplier ?? "Етказувчи"}га тўлов</h3>
+          <p className="text-sm text-zinc-500">Қолган қарз: {fmt(s.outstanding)} so'm</p>
+        </div>
+        <input
+          autoFocus
+          inputMode="numeric"
+          value={amount}
+          onChange={(e) => { setErr(null); setAmount(e.target.value.replace(/\D/g, "")); }}
+          className="w-full rounded-xl border px-4 py-3 text-right text-lg tabular-nums outline-none focus:border-emerald-500"
+        />
+        {err && <p className="text-sm text-red-500">{err}</p>}
+        <div className="flex gap-2">
+          <button onClick={onClose} className="flex-1 rounded-xl border py-2.5 text-zinc-600">Бекор</button>
+          <button onClick={pay} disabled={busy || !amount} className="flex-1 rounded-xl bg-emerald-600 py-2.5 font-medium text-white disabled:opacity-40">Тўлаш</button>
+        </div>
+      </div>
+    </div>
+  );
+}

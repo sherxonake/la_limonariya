@@ -1,4 +1,4 @@
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
@@ -13,6 +13,7 @@ import { SESSION_COOKIE } from "./context";
 import { db } from "./db/client";
 import {
   categories,
+  expenses,
   halls,
   obvalka,
   obvalkaParts,
@@ -31,9 +32,11 @@ import {
   users,
 } from "./db/schema";
 import { computeObvalka } from "./obvalka-calc";
+import { businessDayBounds, businessRangeBounds } from "./time";
 import { TRPCError } from "@trpc/server";
 import {
   directorProcedure,
+  managerProcedure,
   protectedProcedure,
   publicProcedure,
   router,
@@ -148,6 +151,142 @@ async function computeDishTaannarx(meatCost: {
         salePrice > 0 ? Math.round((meatCostTotal / salePrice) * 100) : null,
     };
   });
+}
+
+// CRITICAL: products.costPrice is per-DISPLAY-unit (per-kg / per-dona / per-l),
+// set in purchase.create as price/qty. baseAbs is in base units (g for kg/g,
+// ml for l/ml, dona). Carcass meat (Мол/Қўй лаҳм) has NULL costPrice — value via
+// per-kg carcass cost instead. Returns null when cost is unknown.
+function valuePortion(
+  baseAbs: number,
+  unit: string,
+  costPrice: number | null,
+  carcassPerKg: number | null,
+): number | null {
+  if (carcassPerKg != null) return Math.round((baseAbs / 1000) * carcassPerKg);
+  if (costPrice == null) return null;
+  const div = unit === "kg" || unit === "l" ? 1000 : 1;
+  return Math.round((baseAbs / div) * costPrice);
+}
+
+// COGS for a window = Σ valued sale_writeoff movements. Partial by design:
+// списание skips soldByWeight/no-recipe/unmapped items, and some products lack
+// a costPrice → reported as unpriced so the UI can flag "COGS qisman".
+async function cogsForWindow(start: Date, end: Date) {
+  const meat = {
+    qoy: await latestMeatCost("qoy"),
+    mol: await latestMeatCost("mol"),
+  };
+  const rows = await db
+    .select({
+      qty: stockMovements.qty,
+      name: products.name,
+      unit: products.unit,
+      costPrice: products.costPrice,
+    })
+    .from(stockMovements)
+    .innerJoin(products, eq(stockMovements.productId, products.id))
+    .where(
+      and(
+        eq(stockMovements.type, "sale_writeoff"),
+        gte(stockMovements.createdAt, start),
+        lt(stockMovements.createdAt, end),
+      ),
+    );
+  let cogs = 0;
+  let priced = 0;
+  const unpriced = new Set<string>();
+  for (const r of rows) {
+    const carc =
+      r.name === "Мол лаҳм" ? meat.mol : r.name === "Қўй лаҳм" ? meat.qoy : null;
+    const v = valuePortion(Math.abs(r.qty), r.unit, r.costPrice, carc);
+    if (v == null) {
+      unpriced.add(r.name);
+      continue;
+    }
+    cogs += v;
+    priced++;
+  }
+  return {
+    cogs,
+    priced,
+    unpricedCount: unpriced.size,
+    unpricedNames: [...unpriced].slice(0, 10),
+  };
+}
+
+// Shared revenue/COGS/OPEX aggregation over a UTC window — used by dayClose + pnl.
+async function financeForWindow(start: Date, end: Date) {
+  const payRows = await db
+    .select({ method: orderPayments.method, amount: orderPayments.amount })
+    .from(orderPayments)
+    .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+    .where(
+      and(
+        eq(orders.status, "closed"),
+        gte(orders.closedAt, start),
+        lt(orders.closedAt, end),
+      ),
+    );
+  const byMethod: Record<string, number> = {};
+  let revenue = 0;
+  for (const p of payRows) {
+    byMethod[p.method] = (byMethod[p.method] ?? 0) + p.amount;
+    // debt = receivable (cash not received) — kept as guestDebt, NOT realized revenue
+    if (p.method !== "debt") revenue += p.amount;
+  }
+  const electronic =
+    (byMethod.card ?? 0) + (byMethod.click ?? 0) + (byMethod.payme ?? 0);
+  const cardTax = Math.round((electronic * 4) / 100);
+  const guestDebt = byMethod.debt ?? 0;
+
+  const checks = Number(
+    (
+      await db
+        .select({ n: count() })
+        .from(orders)
+        .where(
+          and(
+            eq(orders.status, "closed"),
+            gte(orders.closedAt, start),
+            lt(orders.closedAt, end),
+          ),
+        )
+    )[0]?.n ?? 0,
+  );
+
+  const cogsRes = await cogsForWindow(start, end);
+
+  const expRows = await db
+    .select({ category: expenses.category, amount: expenses.amount })
+    .from(expenses)
+    .where(and(gte(expenses.spentAt, start), lt(expenses.spentAt, end)));
+  let opex = 0;
+  const opexByCat: Record<string, number> = {};
+  for (const e of expRows) {
+    opex += e.amount;
+    opexByCat[e.category] = (opexByCat[e.category] ?? 0) + e.amount;
+  }
+
+  const sofFoyda = revenue - cogsRes.cogs - opex - cardTax;
+  return {
+    revenue,
+    byMethod,
+    cardTax,
+    guestDebt,
+    checks,
+    avgCheck: checks ? Math.round(revenue / checks) : 0,
+    cogs: cogsRes.cogs,
+    // partial = some movements unpriced OR there's revenue but списание produced
+    // no COGS at all (salads/drinks/by-weight items never write sale_writeoff)
+    cogsPartial:
+      cogsRes.unpricedCount > 0 || (revenue > 0 && cogsRes.cogs === 0),
+    unpricedCount: cogsRes.unpricedCount,
+    unpricedNames: cogsRes.unpricedNames,
+    opex,
+    opexByCat,
+    sofFoyda,
+  };
 }
 
 export const appRouter = router({
@@ -960,7 +1099,38 @@ export const appRouter = router({
             );
           const unitOf = new Map(prods.map((p) => [p.id, p.unit]));
 
-          const total = input.items.reduce((s, i) => s + i.price, 0);
+          // build persisted lines first so `total` matches only what's recorded
+          const draft: {
+            productId: string;
+            qty: number;
+            unit: "g" | "ml" | "dona";
+            price: number;
+          }[] = [];
+          let total = 0;
+          for (const it of input.items) {
+            const u = unitOf.get(it.productId);
+            if (!u) continue;
+            const factor = u === "kg" || u === "l" ? 1000 : 1;
+            const base = Math.round(it.qty * factor);
+            if (base <= 0) continue;
+            const baseUnit =
+              u === "dona" ? "dona" : u === "l" || u === "ml" ? "ml" : "g";
+            total += it.price;
+            draft.push({ productId: it.productId, qty: base, unit: baseUnit, price: it.price });
+            // remember last purchase price per display unit (kg/dona/l)
+            const perUnit = Math.round(it.price / it.qty);
+            if (perUnit > 0)
+              await tx
+                .update(products)
+                .set({ costPrice: perUnit })
+                .where(eq(products.id, it.productId));
+          }
+          if (!draft.length)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Маҳсулот танланг",
+            });
+
           const head = (
             await tx
               .insert(purchases)
@@ -974,48 +1144,226 @@ export const appRouter = router({
           )[0];
           if (!head) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
 
-          const lines: (typeof purchaseItems.$inferInsert)[] = [];
-          const moves: (typeof stockMovements.$inferInsert)[] = [];
-          for (const it of input.items) {
-            const u = unitOf.get(it.productId);
-            if (!u) continue;
-            const factor = u === "kg" || u === "l" ? 1000 : 1;
-            const base = Math.round(it.qty * factor);
-            if (base <= 0) continue;
-            const baseUnit =
-              u === "dona" ? "dona" : u === "l" || u === "ml" ? "ml" : "g";
-            lines.push({
+          await tx.insert(purchaseItems).values(
+            draft.map((l) => ({
               purchaseId: head.id,
-              productId: it.productId,
-              qty: base,
-              unit: baseUnit,
-              price: it.price,
-            });
-            moves.push({
-              productId: it.productId,
-              type: "purchase",
-              qty: base,
-              unit: baseUnit,
+              productId: l.productId,
+              qty: l.qty,
+              unit: l.unit,
+              price: l.price,
+            })),
+          );
+          await tx.insert(stockMovements).values(
+            draft.map((l) => ({
+              productId: l.productId,
+              type: "purchase" as const,
+              qty: l.qty,
+              unit: l.unit,
               refType: "purchase",
               refId: head.id,
               createdById: ctx.user.id,
-            });
-            // remember last purchase price per display unit (kg/dona/l)
-            const perUnit = Math.round(it.price / it.qty);
-            if (perUnit > 0)
-              await tx
-                .update(products)
-                .set({ costPrice: perUnit })
-                .where(eq(products.id, it.productId));
-          }
-          if (!lines.length)
+            })),
+          );
+          return { id: head.id, lines: draft.length, total };
+        });
+      }),
+  }),
+
+  finance: router({
+    expenses: router({
+      list: directorProcedure
+        .input(
+          z
+            .object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+            .optional(),
+        )
+        .query(async ({ input }) => {
+          const { startUTC, endUTC, dayKey } = businessDayBounds(input?.day);
+          const rows = await db
+            .select({
+              id: expenses.id,
+              category: expenses.category,
+              amount: expenses.amount,
+              method: expenses.method,
+              recurring: expenses.recurring,
+              note: expenses.note,
+              spentAt: expenses.spentAt,
+            })
+            .from(expenses)
+            .where(
+              and(gte(expenses.spentAt, startUTC), lt(expenses.spentAt, endUTC)),
+            )
+            .orderBy(desc(expenses.spentAt));
+          const total = rows.reduce((s, r) => s + r.amount, 0);
+          const byCat: Record<string, number> = {};
+          for (const r of rows) byCat[r.category] = (byCat[r.category] ?? 0) + r.amount;
+          return { dayKey, rows, total, byCat };
+        }),
+
+      create: directorProcedure
+        .input(
+          z.object({
+            category: z.enum(["ijara", "gaz", "elektr", "ish_haqi", "jihoz", "boshqa"]),
+            amount: z.number().int().positive(),
+            method: z.enum(["cash", "card", "click", "payme", "debt"]).optional(),
+            recurring: z.boolean().optional(),
+            note: z.string().optional(),
+            day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+          }),
+        )
+        .mutation(async ({ input, ctx }) => {
+          // backdate to noon of the chosen business day (lands inside its 06:00 window)
+          const spentAt = input.day
+            ? new Date(businessDayBounds(input.day).startUTC.getTime() + 12 * 3600 * 1000)
+            : new Date();
+          const row = (
+            await db
+              .insert(expenses)
+              .values({
+                category: input.category,
+                amount: input.amount,
+                method: input.method ?? "cash",
+                recurring: input.recurring ?? false,
+                note: input.note ?? null,
+                spentAt,
+                createdById: ctx.user.id,
+              })
+              .returning({ id: expenses.id })
+          )[0];
+          return { id: row?.id };
+        }),
+
+      delete: directorProcedure
+        .input(z.object({ id: z.string().uuid() }))
+        .mutation(async ({ input }) => {
+          await db.delete(expenses).where(eq(expenses.id, input.id));
+          return { ok: true };
+        }),
+    }),
+
+    dayClose: directorProcedure
+      .input(
+        z
+          .object({ day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional() })
+          .optional(),
+      )
+      .query(async ({ input }) => {
+        const { startUTC, endUTC, dayKey } = businessDayBounds(input?.day);
+        const fin = await financeForWindow(startUTC, endUTC);
+        return { dayKey, ...fin };
+      }),
+
+    pnl: directorProcedure
+      .input(
+        z.object({
+          from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { startUTC, endUTC, days } = businessRangeBounds(input.from, input.to);
+        const fin = await financeForWindow(startUTC, endUTC);
+        const cogsShare = fin.revenue > 0 ? fin.cogs / fin.revenue : 0;
+        const denom = 1 - cogsShare;
+        return {
+          ...fin,
+          days,
+          dailyAvg: Math.round(fin.revenue / days),
+          marginPct: fin.revenue > 0 ? Math.round((fin.sofFoyda / fin.revenue) * 100) : null,
+          breakEvenPerDay: denom > 0 ? Math.round(fin.opex / days / denom) : null,
+        };
+      }),
+
+    debts: directorProcedure.query(async () => {
+      const supplierRows = await db
+        .select({
+          id: purchases.id,
+          supplier: purchases.supplier,
+          total: purchases.total,
+          paidTotal: purchases.paidTotal,
+          createdAt: purchases.createdAt,
+        })
+        .from(purchases)
+        .where(sql`${purchases.paidTotal} < ${purchases.total}`)
+        .orderBy(desc(purchases.createdAt));
+      const supplier = supplierRows.map((r) => ({
+        ...r,
+        outstanding: r.total - r.paidTotal,
+      }));
+      const supplierTotal = supplier.reduce((s, r) => s + r.outstanding, 0);
+
+      const guestRows = await db
+        .select({
+          orderId: orders.id,
+          tableNo: orders.tableNo,
+          closedAt: orders.closedAt,
+          hall: halls.name,
+          amount: orderPayments.amount,
+        })
+        .from(orderPayments)
+        .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+        .leftJoin(halls, eq(orders.hallId, halls.id))
+        .where(eq(orderPayments.method, "debt"))
+        .orderBy(desc(orders.closedAt))
+        .limit(50);
+      // total is unbounded — guestRows is only the latest 50 for display
+      const guestTotal = Number(
+        (
+          await db
+            .select({
+              s: sql<number>`coalesce(sum(${orderPayments.amount}), 0)`,
+            })
+            .from(orderPayments)
+            .where(eq(orderPayments.method, "debt"))
+        )[0]?.s ?? 0,
+      );
+
+      return { supplier, supplierTotal, guest: guestRows, guestTotal };
+    }),
+
+    paySupplier: protectedProcedure
+      .input(
+        z.object({
+          purchaseId: z.string().uuid(),
+          amount: z.number().int().positive(),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        if (!["director", "manager", "buyer"].includes(ctx.user.role))
+          throw new TRPCError({ code: "FORBIDDEN" });
+        return db.transaction(async (tx) => {
+          const p = (
+            await tx
+              .select({ total: purchases.total, paidTotal: purchases.paidTotal })
+              .from(purchases)
+              .where(eq(purchases.id, input.purchaseId))
+              .limit(1)
+          )[0];
+          if (!p) throw new TRPCError({ code: "NOT_FOUND" });
+          const outstanding = p.total - p.paidTotal;
+          if (input.amount > outstanding)
             throw new TRPCError({
               code: "BAD_REQUEST",
-              message: "Маҳсулот танланг",
+              message: `Қолган қарз ${outstanding.toLocaleString("ru-RU")} so'm`,
             });
-          await tx.insert(purchaseItems).values(lines);
-          await tx.insert(stockMovements).values(moves);
-          return { id: head.id, lines: lines.length, total };
+          // atomic + guarded: bump in SQL, reject if a concurrent payment would
+          // push paidTotal over total (lost-update / over-pay protection)
+          const updated = await tx
+            .update(purchases)
+            .set({ paidTotal: sql`${purchases.paidTotal} + ${input.amount}` })
+            .where(
+              and(
+                eq(purchases.id, input.purchaseId),
+                sql`${purchases.paidTotal} + ${input.amount} <= ${purchases.total}`,
+              ),
+            )
+            .returning({ paidTotal: purchases.paidTotal });
+          if (updated.length === 0)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Қарз ўзгарган — қайта уриниб кўринг",
+            });
+          return { ok: true, paidTotal: updated[0]!.paidTotal };
         });
       }),
   }),

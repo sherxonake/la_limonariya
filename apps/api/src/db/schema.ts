@@ -221,6 +221,7 @@ export const purchases = pgTable("purchases", {
   supplier: text("supplier"),
   note: text("note"),
   total: integer("total").notNull().default(0),
+  paidTotal: integer("paid_total").notNull().default(0), // supplier debt = total − paidTotal
   branchId: uuid("branch_id").references(() => branches.id),
   createdById: uuid("created_by_id").references(() => users.id),
   createdAt: timestamp("created_at", { withTimezone: true })
@@ -279,4 +280,33 @@ export const stockMovements = pgTable(
     index("sm_product_idx").on(t.productId),
     index("sm_ref_idx").on(t.refType, t.refId),
   ],
+);
+
+export const expenseCategory = pgEnum("expense_category", [
+  "ijara", // аренда
+  "gaz", // газ
+  "elektr", // свет/электр
+  "ish_haqi", // ойлик (зарплата)
+  "jihoz", // жиҳоз/техника
+  "boshqa", // прочее
+]);
+
+// OPEX / cash-out. Aggregated by spentAt (operational day, 06:00 boundary), not createdAt.
+export const expenses = pgTable(
+  "expenses",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    category: expenseCategory("category").notNull(),
+    amount: integer("amount").notNull(), // so'm
+    method: paymentMethod("method").notNull().default("cash"),
+    recurring: boolean("recurring").notNull().default(false),
+    note: text("note"),
+    spentAt: timestamp("spent_at", { withTimezone: true }).notNull().defaultNow(),
+    branchId: uuid("branch_id").references(() => branches.id),
+    createdById: uuid("created_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("exp_spent_idx").on(t.spentAt)],
 );

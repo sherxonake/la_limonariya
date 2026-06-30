@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { SessionUser } from "./App";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
+import { Moliya } from "./Moliya";
 import { Obvalka } from "./Obvalka";
 import { Ombor } from "./Ombor";
 import { Pos } from "./Pos";
@@ -20,6 +21,7 @@ const ROLE_LABEL: Record<string, string> = {
 
 type Tab =
   | "dashboard"
+  | "moliya"
   | "pos"
   | "harid"
   | "obvalka"
@@ -58,6 +60,7 @@ export function Shell({
 
   const tabs: { key: Tab; label: string }[] = [
     ...(isDirector ? [{ key: "dashboard" as Tab, label: "Бошқарув" }] : []),
+    ...(isDirector ? [{ key: "moliya" as Tab, label: "Молия" }] : []),
     ...(canPos ? [{ key: "pos" as Tab, label: "Касса" }] : []),
     ...(canObvalka ? [{ key: "harid" as Tab, label: "Харид" }] : []),
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
@@ -107,6 +110,7 @@ export function Shell({
 
       <main className="mx-auto max-w-4xl p-5">
         {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
+        {tab === "moliya" && <Moliya />}
         {tab === "pos" && <Pos />}
         {tab === "harid" && <Purchases />}
         {tab === "obvalka" && <Obvalka />}
