@@ -94,6 +94,7 @@ async function computeDishTaannarx(meatCost: {
   const recs = await db
     .select({
       id: recipes.id,
+      productId: recipes.productId,
       name: recipes.name,
       kind: recipes.kind,
       category: recipes.category,
@@ -134,18 +135,22 @@ async function computeDishTaannarx(meatCost: {
   return recs.map((r) => {
     let meatCostTotal = 0;
     let meatG = 0;
+    let hasUnpricedMeat = false; // meat ingredient present but its carcass has no obvalka cost yet
     for (const it of byRecipe.get(r.id) ?? []) {
       const c = carcassOf(it.stockHint, r.category);
       const cost = c ? meatCost[c] : null;
       if (c && cost && it.qtyG) {
         meatCostTotal += (it.qtyG / 1000) * cost;
         meatG += it.qtyG;
+      } else if (c && !cost) {
+        hasUnpricedMeat = true;
       }
     }
     meatCostTotal = Math.round(meatCostTotal);
     const salePrice = r.salePrice ?? 0;
     return {
       id: r.id,
+      productId: r.productId,
       name: r.name,
       kind: r.kind,
       salePrice,
@@ -153,6 +158,7 @@ async function computeDishTaannarx(meatCost: {
       meatG,
       meatPct:
         salePrice > 0 ? Math.round((meatCostTotal / salePrice) * 100) : null,
+      hasUnpricedMeat,
     };
   });
 }
@@ -269,6 +275,54 @@ async function expectedCashForWindow(start: Date, end: Date) {
   );
   const expectedCash = TILL_FLOAT + cashRevenue + cashDebtRepaid - cashExpenses;
   return { cashRevenue, cashDebtRepaid, cashExpenses, expectedCash };
+}
+
+// Lightweight revenue-only aggregation (no COGS) for trend/report views where
+// looping cogsForWindow per day would be wasteful — distinct from financeForWindow.
+async function revenueForWindow(start: Date, end: Date) {
+  const payRows = await db
+    .select({ method: orderPayments.method, amount: orderPayments.amount })
+    .from(orderPayments)
+    .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+    .where(
+      and(eq(orders.status, "closed"), gte(orders.closedAt, start), lt(orders.closedAt, end)),
+    );
+  let revenue = 0;
+  const byMethod: Record<string, number> = {};
+  for (const p of payRows) {
+    byMethod[p.method] = (byMethod[p.method] ?? 0) + p.amount;
+    if (p.method !== "debt") revenue += p.amount;
+  }
+  const checks = Number(
+    (
+      await db
+        .select({ n: count() })
+        .from(orders)
+        .where(
+          and(eq(orders.status, "closed"), gte(orders.closedAt, start), lt(orders.closedAt, end)),
+        )
+    )[0]?.n ?? 0,
+  );
+  return { revenue, byMethod, checks, avgCheck: checks ? Math.round(revenue / checks) : 0 };
+}
+
+// Orders (closed, in window) that carry a debt payment — used to keep item-level
+// revenue consistent with the rest of the app's "debt is not realized revenue"
+// convention. Qty (food actually served) still counts; revenue doesn't.
+async function debtOrderIds(start: Date, end: Date): Promise<Set<string>> {
+  const rows = await db
+    .select({ orderId: orderPayments.orderId })
+    .from(orderPayments)
+    .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+    .where(
+      and(
+        eq(orderPayments.method, "debt"),
+        eq(orders.status, "closed"),
+        gte(orders.closedAt, start),
+        lt(orders.closedAt, end),
+      ),
+    );
+  return new Set(rows.map((r) => r.orderId));
 }
 
 async function debtTotals() {
@@ -2058,6 +2112,194 @@ export const appRouter = router({
         guestDebt: guestTotal,
       };
     }),
+  }),
+
+  report: router({
+    salesDaily: managerProcedure
+      .input(z.object({ days: z.number().int().positive().max(60).optional() }).optional())
+      .query(async ({ input }) => {
+        const days = input?.days ?? 14;
+        let dayKey = businessDayBounds().dayKey;
+        const keys: string[] = [];
+        for (let i = 0; i < days; i++) {
+          keys.unshift(dayKey);
+          dayKey = previousDayKey(dayKey);
+        }
+        const rows = [];
+        for (const k of keys) {
+          const { startUTC, endUTC } = businessDayBounds(k);
+          const r = await revenueForWindow(startUTC, endUTC);
+          rows.push({ dayKey: k, revenue: r.revenue, checks: r.checks, avgCheck: r.avgCheck });
+        }
+        return { rows, breakEvenHint: BREAK_EVEN_HINT };
+      }),
+
+    byCategory: managerProcedure
+      .input(
+        z.object({
+          from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { startUTC, endUTC } = businessRangeBounds(input.from, input.to);
+        const debtOrders = await debtOrderIds(startUTC, endUTC);
+        const rows = await db
+          .select({
+            orderId: orderItems.orderId,
+            category: categories.name,
+            qty: orderItems.qty,
+            price: orderItems.price,
+          })
+          .from(orderItems)
+          .innerJoin(orders, eq(orderItems.orderId, orders.id))
+          .leftJoin(products, eq(orderItems.productId, products.id))
+          .leftJoin(categories, eq(products.categoryId, categories.id))
+          .where(
+            and(
+              eq(orders.status, "closed"),
+              gte(orders.closedAt, startUTC),
+              lt(orders.closedAt, endUTC),
+            ),
+          );
+        const byCat = new Map<string, { revenue: number; qty: number }>();
+        let total = 0;
+        for (const r of rows) {
+          const key = r.category ?? "Бошқа";
+          const e = byCat.get(key) ?? { revenue: 0, qty: 0 };
+          e.qty += r.qty; // food served counts regardless of payment status
+          if (!debtOrders.has(r.orderId)) {
+            // revenue = realized cash only, matching salesDaily/byWaiter convention
+            const rev = r.qty * r.price;
+            e.revenue += rev;
+            total += rev;
+          }
+          byCat.set(key, e);
+        }
+        return [...byCat.entries()]
+          .map(([category, v]) => ({
+            category,
+            revenue: v.revenue,
+            qty: v.qty,
+            pct: total > 0 ? Math.round((v.revenue / total) * 100) : 0,
+          }))
+          .sort((a, b) => b.revenue - a.revenue);
+      }),
+
+    topDishes: managerProcedure
+      .input(
+        z.object({
+          from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          by: z.enum(["qty", "profit"]).optional(),
+          limit: z.number().int().positive().max(50).optional(),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { startUTC, endUTC } = businessRangeBounds(input.from, input.to);
+        const debtOrders = await debtOrderIds(startUTC, endUTC);
+        const rows = await db
+          .select({
+            orderId: orderItems.orderId,
+            productId: orderItems.productId,
+            name: orderItems.name,
+            qty: orderItems.qty,
+            price: orderItems.price,
+          })
+          .from(orderItems)
+          .innerJoin(orders, eq(orderItems.orderId, orders.id))
+          .where(
+            and(
+              eq(orders.status, "closed"),
+              gte(orders.closedAt, startUTC),
+              lt(orders.closedAt, endUTC),
+            ),
+          );
+        const byProduct = new Map<string, { name: string; qty: number; revenue: number }>();
+        for (const r of rows) {
+          if (!r.productId) continue;
+          const e = byProduct.get(r.productId) ?? { name: r.name, qty: 0, revenue: 0 };
+          e.qty += r.qty; // food served counts regardless of payment status
+          if (!debtOrders.has(r.orderId)) e.revenue += r.qty * r.price; // realized cash only
+          byProduct.set(r.productId, e);
+        }
+        const meatCost = { qoy: await latestMeatCost("qoy"), mol: await latestMeatCost("mol") };
+        const dishes = await computeDishTaannarx(meatCost);
+        const meatPerUnit = new Map(
+          dishes
+            // exclude batch/pot recipes (meatPct>100 = per-pot, not per-serving — same
+            // exclusion as computeSignals/Taannarx) and meat-present-but-unpriced dishes
+            // (would otherwise read as a real 0 and overstate profit to full revenue)
+            .filter(
+              (d) =>
+                d.productId &&
+                !(d.meatPct != null && d.meatPct > 100) &&
+                !d.hasUnpricedMeat,
+            )
+            .map((d) => [d.productId as string, d.meatCostTotal]),
+        );
+        const result = [...byProduct.entries()].map(([productId, v]) => {
+          const perUnit = meatPerUnit.get(productId) ?? null;
+          const meatCostTotal = perUnit != null ? perUnit * v.qty : null;
+          const profit = meatCostTotal != null ? v.revenue - meatCostTotal : null;
+          return { productId, name: v.name, qty: v.qty, revenue: v.revenue, meatCostTotal, profit };
+        });
+        const by = input.by ?? "profit";
+        result.sort((a, b) =>
+          by === "qty" ? b.qty - a.qty : (b.profit ?? -Infinity) - (a.profit ?? -Infinity),
+        );
+        return result.slice(0, input.limit ?? 15);
+      }),
+
+    byWaiter: managerProcedure
+      .input(
+        z.object({
+          from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+          to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+        }),
+      )
+      .query(async ({ input }) => {
+        const { startUTC, endUTC } = businessRangeBounds(input.from, input.to);
+        const rows = await db
+          .select({
+            waiterId: orders.waiterId,
+            waiterName: users.name,
+            amount: orderPayments.amount,
+            method: orderPayments.method,
+            orderId: orders.id,
+          })
+          .from(orderPayments)
+          .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+          .leftJoin(users, eq(orders.waiterId, users.id))
+          .where(
+            and(
+              eq(orders.status, "closed"),
+              gte(orders.closedAt, startUTC),
+              lt(orders.closedAt, endUTC),
+            ),
+          );
+        const byWaiter = new Map<string, { name: string; revenue: number; orders: Set<string> }>();
+        for (const r of rows) {
+          if (r.method === "debt") continue; // realized revenue only
+          const key = r.waiterId ?? "unknown";
+          const e = byWaiter.get(key) ?? {
+            name: r.waiterName ?? "Номаълум",
+            revenue: 0,
+            orders: new Set<string>(),
+          };
+          e.revenue += r.amount;
+          e.orders.add(r.orderId);
+          byWaiter.set(key, e);
+        }
+        return [...byWaiter.entries()]
+          .map(([waiterId, v]) => ({
+            waiterId,
+            name: v.name,
+            revenue: v.revenue,
+            checks: v.orders.size,
+          }))
+          .sort((a, b) => b.revenue - a.revenue);
+      }),
   }),
 });
 

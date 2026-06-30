@@ -3,6 +3,7 @@ import type { SessionUser } from "./App";
 import { Analitika } from "./Analitika";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
+import { Hisobot } from "./Hisobot";
 import { Inventarizatsiya } from "./Inventarizatsiya";
 import { Moliya } from "./Moliya";
 import { Obvalka } from "./Obvalka";
@@ -30,6 +31,7 @@ type Tab =
   | "obvalka"
   | "inventarizatsiya"
   | "ombor"
+  | "hisobot"
   | "taannarx"
   | "catalog"
   | "recipes"
@@ -74,6 +76,9 @@ export function Shell({
       : []),
     ...(["director", "manager"].includes(user.role)
       ? [{ key: "ombor" as Tab, label: "Омбор" }]
+      : []),
+    ...(["director", "manager"].includes(user.role)
+      ? [{ key: "hisobot" as Tab, label: "Ҳисобот" }]
       : []),
     ...(isDirector ? [{ key: "taannarx" as Tab, label: "Таннарх" }] : []),
     { key: "catalog", label: "Каталог" },
@@ -125,6 +130,7 @@ export function Shell({
         {tab === "obvalka" && <Obvalka />}
         {tab === "inventarizatsiya" && <Inventarizatsiya user={user} />}
         {tab === "ombor" && <Ombor />}
+        {tab === "hisobot" && <Hisobot />}
         {tab === "taannarx" && <Taannarx />}
         {tab === "catalog" && <Catalog />}
         {tab === "recipes" && <Recipes />}

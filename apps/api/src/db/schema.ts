@@ -171,22 +171,26 @@ export const halls = pgTable("halls", {
 
 export const orderStatus = pgEnum("order_status", ["open", "closed"]);
 
-export const orders = pgTable("orders", {
-  id: uuid("id").primaryKey().defaultRandom(),
-  hallId: uuid("hall_id")
-    .notNull()
-    .references(() => halls.id),
-  tableNo: text("table_no"),
-  waiterId: uuid("waiter_id").references(() => users.id),
-  status: orderStatus("status").notNull().default("open"),
-  servicePct: integer("service_pct").notNull().default(0),
-  branchId: uuid("branch_id").references(() => branches.id),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-  closedAt: timestamp("closed_at", { withTimezone: true }),
-  closedById: uuid("closed_by_id").references(() => users.id),
-});
+export const orders = pgTable(
+  "orders",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    hallId: uuid("hall_id")
+      .notNull()
+      .references(() => halls.id),
+    tableNo: text("table_no"),
+    waiterId: uuid("waiter_id").references(() => users.id),
+    status: orderStatus("status").notNull().default("open"),
+    servicePct: integer("service_pct").notNull().default(0),
+    branchId: uuid("branch_id").references(() => branches.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    closedAt: timestamp("closed_at", { withTimezone: true }),
+    closedById: uuid("closed_by_id").references(() => users.id),
+  },
+  (t) => [index("orders_status_closed_idx").on(t.status, t.closedAt)],
+);
 
 export const orderItems = pgTable("order_items", {
   id: uuid("id").primaryKey().defaultRandom(),

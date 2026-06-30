@@ -1,0 +1,1 @@
+CREATE INDEX "orders_status_closed_idx" ON "orders" USING btree ("status","closed_at");

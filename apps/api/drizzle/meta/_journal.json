@@ -92,6 +92,13 @@
       "when": 1782847291305,
       "tag": "0012_short_vampiro",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1782849048371,
+      "tag": "0013_empty_supreme_intelligence",
+      "breakpoints": true
     }
   ]
 }
