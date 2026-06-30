@@ -34,8 +34,21 @@ export const users = pgTable("users", {
   name: text("name").notNull(),
   role: userRole("role").notNull(),
   pinHash: text("pin_hash"),
+  pinLookup: text("pin_lookup").unique(),
   active: boolean("active").notNull().default(true),
   branchId: uuid("branch_id").references(() => branches.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
+
+export const sessions = pgTable("sessions", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "cascade" }),
+  tokenHash: text("token_hash").notNull().unique(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
   createdAt: timestamp("created_at", { withTimezone: true })
     .notNull()
     .defaultNow(),

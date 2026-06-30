@@ -15,6 +15,13 @@
       "when": 1782816369301,
       "tag": "0001_spicy_speed",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1782816827428,
+      "tag": "0002_sleepy_banshee",
+      "breakpoints": true
     }
   ]
 }

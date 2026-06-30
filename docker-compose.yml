@@ -24,6 +24,8 @@ services:
     environment:
       DATABASE_URL: postgres://limon:${POSTGRES_PASSWORD:-limon_dev}@postgres:5432/limonariya
       PORT: 3000
+      PIN_PEPPER: ${PIN_PEPPER:-dev-pepper-change-me}
+      BOOTSTRAP_DIRECTOR_PIN: ${BOOTSTRAP_DIRECTOR_PIN:-1234}
     depends_on:
       postgres:
         condition: service_healthy

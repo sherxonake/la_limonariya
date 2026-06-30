@@ -1,5 +1,7 @@
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/postgres-js";
 import postgres from "postgres";
+import { hashPin, pinLookup } from "../auth";
 import { branches, users } from "./schema";
 
 const url = process.env.DATABASE_URL;
@@ -33,6 +35,19 @@ if (existing.length > 0) {
 
   await db.insert(users).values(seed.map((u) => ({ ...u, branchId: branch.id })));
   console.log(`seeded 1 branch + ${seed.length} users`);
+}
+
+// Bootstrap: director must be able to log in even on an already-seeded DB.
+const directorPin = process.env.BOOTSTRAP_DIRECTOR_PIN ?? "1234";
+const director = (
+  await db.select().from(users).where(eq(users.role, "director")).limit(1)
+)[0];
+if (director && !director.pinHash) {
+  await db
+    .update(users)
+    .set({ pinHash: hashPin(directorPin), pinLookup: pinLookup(directorPin) })
+    .where(eq(users.id, director.id));
+  console.log(`director bootstrap PIN set (${directorPin})`);
 }
 
 await sql.end();
