@@ -30,6 +30,12 @@ export function businessDayBounds(day?: string): {
   return { startUTC, endUTC, dayKey };
 }
 
+export function previousDayKey(dayKey: string): string {
+  const [y = 0, m = 1, d = 1] = dayKey.split("-").map(Number);
+  const prev = new Date(Date.UTC(y, m - 1, d - 1));
+  return `${prev.getUTCFullYear()}-${String(prev.getUTCMonth() + 1).padStart(2, "0")}-${String(prev.getUTCDate()).padStart(2, "0")}`;
+}
+
 // UTC window spanning [from business day .. to business day] inclusive.
 export function businessRangeBounds(
   from: string,

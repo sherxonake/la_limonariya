@@ -341,3 +341,48 @@ export const tillCounts = pgTable("till_counts", {
     .notNull()
     .defaultNow(),
 });
+
+export const inventoryCountStatus = pgEnum("inventory_count_status", [
+  "open", // менежер ҳали санаяпти
+  "submitted", // менежер юборди, директор тасдиғини кутади
+  "approved", // директор тасдиқлади — ledger тузатилди (inventory_adjust)
+]);
+
+// One physical count of one storage (Ошхона музлаткич | Катта музлаткич).
+// 2-step: manager counts+submits with a reason per gap, director approves —
+// only approval writes the reconciling stock_movements (owner-confirmed flow).
+export const inventoryCounts = pgTable("inventory_counts", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  storage: text("storage").notNull(),
+  status: inventoryCountStatus("status").notNull().default("open"),
+  note: text("note"),
+  branchId: uuid("branch_id").references(() => branches.id),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  submittedAt: timestamp("submitted_at", { withTimezone: true }),
+  approvedById: uuid("approved_by_id").references(() => users.id),
+  approvedAt: timestamp("approved_at", { withTimezone: true }),
+});
+
+// theoreticalQty is a SNAPSHOT taken at startCount (base units: g/ml/dona) so
+// later sales during counting don't retro-shift it. countedQty filled by manager.
+export const inventoryItems = pgTable(
+  "inventory_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    countId: uuid("count_id")
+      .notNull()
+      .references(() => inventoryCounts.id, { onDelete: "cascade" }),
+    productId: uuid("product_id")
+      .notNull()
+      .references(() => products.id),
+    theoreticalQty: integer("theoretical_qty").notNull(),
+    countedQty: integer("counted_qty"),
+    unit: productUnit("unit").notNull(),
+    reason: text("reason"),
+    sort: integer("sort").notNull().default(0),
+  },
+  (t) => [index("ii_count_idx").on(t.countId)],
+);

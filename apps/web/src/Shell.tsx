@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import type { SessionUser } from "./App";
+import { Analitika } from "./Analitika";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
+import { Inventarizatsiya } from "./Inventarizatsiya";
 import { Moliya } from "./Moliya";
 import { Obvalka } from "./Obvalka";
 import { Ombor } from "./Ombor";
@@ -21,10 +23,12 @@ const ROLE_LABEL: Record<string, string> = {
 
 type Tab =
   | "dashboard"
+  | "analitika"
   | "moliya"
   | "pos"
   | "harid"
   | "obvalka"
+  | "inventarizatsiya"
   | "ombor"
   | "taannarx"
   | "catalog"
@@ -60,10 +64,14 @@ export function Shell({
 
   const tabs: { key: Tab; label: string }[] = [
     ...(isDirector ? [{ key: "dashboard" as Tab, label: "Бошқарув" }] : []),
+    ...(isDirector ? [{ key: "analitika" as Tab, label: "Аналитика" }] : []),
     ...(isDirector ? [{ key: "moliya" as Tab, label: "Молия" }] : []),
     ...(canPos ? [{ key: "pos" as Tab, label: "Касса" }] : []),
     ...(canObvalka ? [{ key: "harid" as Tab, label: "Харид" }] : []),
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
+    ...(["director", "manager"].includes(user.role)
+      ? [{ key: "inventarizatsiya" as Tab, label: "Инвентаризация" }]
+      : []),
     ...(["director", "manager"].includes(user.role)
       ? [{ key: "ombor" as Tab, label: "Омбор" }]
       : []),
@@ -81,7 +89,7 @@ export function Shell({
             <span className="text-lg font-bold">La Limonariya</span>
             <span className="text-xs text-zinc-400">Навоий</span>
           </div>
-          <nav className="flex gap-1">
+          <nav className="flex flex-wrap gap-1">
             {tabs.map((t) => (
               <button
                 key={t.key}
@@ -110,10 +118,12 @@ export function Shell({
 
       <main className="mx-auto max-w-4xl p-5">
         {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
+        {tab === "analitika" && <Analitika />}
         {tab === "moliya" && <Moliya />}
         {tab === "pos" && <Pos />}
         {tab === "harid" && <Purchases />}
         {tab === "obvalka" && <Obvalka />}
+        {tab === "inventarizatsiya" && <Inventarizatsiya user={user} />}
         {tab === "ombor" && <Ombor />}
         {tab === "taannarx" && <Taannarx />}
         {tab === "catalog" && <Catalog />}

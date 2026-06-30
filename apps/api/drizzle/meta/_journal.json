@@ -85,6 +85,13 @@
       "when": 1782845944843,
       "tag": "0011_busy_thing",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1782847291305,
+      "tag": "0012_short_vampiro",
+      "breakpoints": true
     }
   ]
 }

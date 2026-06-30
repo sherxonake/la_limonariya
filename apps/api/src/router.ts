@@ -16,6 +16,8 @@ import {
   debtPayments,
   expenses,
   halls,
+  inventoryCounts,
+  inventoryItems,
   obvalka,
   obvalkaParts,
   orderItems,
@@ -34,7 +36,7 @@ import {
   users,
 } from "./db/schema";
 import { computeObvalka } from "./obvalka-calc";
-import { businessDayBounds, businessRangeBounds } from "./time";
+import { businessDayBounds, businessRangeBounds, previousDayKey } from "./time";
 import { TRPCError } from "@trpc/server";
 import {
   directorProcedure,
@@ -219,6 +221,278 @@ async function cogsForWindow(start: Date, end: Date) {
 
 // Shared revenue/COGS/OPEX aggregation over a UTC window — used by dayClose + pnl.
 const TILL_FLOAT = 50_000; // owner-confirmed start-of-shift register float
+
+async function expectedCashForWindow(start: Date, end: Date) {
+  const cashRevenue = Number(
+    (
+      await db
+        .select({ s: sql<number>`coalesce(sum(${orderPayments.amount}), 0)` })
+        .from(orderPayments)
+        .innerJoin(orders, eq(orderPayments.orderId, orders.id))
+        .where(
+          and(
+            eq(orderPayments.method, "cash"),
+            eq(orders.status, "closed"),
+            gte(orders.closedAt, start),
+            lt(orders.closedAt, end),
+          ),
+        )
+    )[0]?.s ?? 0,
+  );
+  const cashDebtRepaid = Number(
+    (
+      await db
+        .select({ s: sql<number>`coalesce(sum(${debtPayments.amount}), 0)` })
+        .from(debtPayments)
+        .where(
+          and(
+            eq(debtPayments.method, "cash"),
+            gte(debtPayments.createdAt, start),
+            lt(debtPayments.createdAt, end),
+          ),
+        )
+    )[0]?.s ?? 0,
+  );
+  const cashExpenses = Number(
+    (
+      await db
+        .select({ s: sql<number>`coalesce(sum(${expenses.amount}), 0)` })
+        .from(expenses)
+        .where(
+          and(
+            eq(expenses.method, "cash"),
+            gte(expenses.spentAt, start),
+            lt(expenses.spentAt, end),
+          ),
+        )
+    )[0]?.s ?? 0,
+  );
+  const expectedCash = TILL_FLOAT + cashRevenue + cashDebtRepaid - cashExpenses;
+  return { cashRevenue, cashDebtRepaid, cashExpenses, expectedCash };
+}
+
+async function debtTotals() {
+  const supplierTotal = Number(
+    (
+      await db
+        .select({
+          s: sql<number>`coalesce(sum(${purchases.total} - ${purchases.paidTotal}), 0)`,
+        })
+        .from(purchases)
+        .where(sql`${purchases.paidTotal} < ${purchases.total}`)
+    )[0]?.s ?? 0,
+  );
+  const debtAmounts = await db
+    .select({ orderId: orderPayments.orderId, amount: orderPayments.amount })
+    .from(orderPayments)
+    .where(eq(orderPayments.method, "debt"));
+  const paidRows = await db
+    .select({ orderId: debtPayments.orderId, paid: sql<number>`sum(${debtPayments.amount})` })
+    .from(debtPayments)
+    .groupBy(debtPayments.orderId);
+  const paidMap = new Map(paidRows.map((r) => [r.orderId, Number(r.paid)]));
+  const guestTotal = debtAmounts.reduce(
+    (s, r) => s + Math.max(0, r.amount - (paidMap.get(r.orderId) ?? 0)),
+    0,
+  );
+  return { supplierTotal, guestTotal };
+}
+
+// Stockable products (what a physical count covers) — LEFT JOIN so zero-movement
+// products still appear with onHand=0 (stock.onHand's INNER JOIN would omit them).
+async function stockableOnHand(exec: { select: typeof db.select } = db) {
+  const rows = await exec
+    .select({
+      id: products.id,
+      name: products.name,
+      type: products.type,
+      unit: products.unit,
+      costPrice: products.costPrice,
+      onHand: sql<number>`coalesce(sum(${stockMovements.qty}), 0)`,
+    })
+    .from(products)
+    .leftJoin(stockMovements, eq(stockMovements.productId, products.id))
+    .where(
+      and(eq(products.active, true), inArray(products.type, ["ingredient", "part", "goods"])),
+    )
+    .groupBy(products.id, products.name, products.type, products.unit, products.costPrice)
+    .orderBy(products.type, products.name);
+  return rows.map((r) => ({ ...r, onHand: Number(r.onHand) }));
+}
+
+// Owner-confirmed storages — must match apps/web/src/Inventarizatsiya.tsx STORAGES.
+const STORAGES = ["Ошхона музлаткич", "Катта музлаткич"] as const;
+
+// Owner-stated constants (phase-1: hardcoded, not a sliding median — see delivery plan).
+const BREAK_EVEN_HINT = 8_900_000;
+const BLENDED_COGS_PCT = 0.526;
+const THIN_MARGIN_PCT = 60;
+const MEAT_PRICE_SPIKE_PCT = 1.15;
+
+async function computeSignals() {
+  const recentObv = await db
+    .select()
+    .from(obvalka)
+    .orderBy(desc(obvalka.createdAt))
+    .limit(20);
+  const obvalkaFlags: {
+    id: string;
+    carcassType: string;
+    weightG: number;
+    createdAt: Date;
+    lossPct: number;
+    balanceFlag: boolean;
+    anomalies: number;
+  }[] = [];
+  for (const o of recentObv) {
+    const parts = await db
+      .select({
+        name: obvalkaParts.name,
+        weightG: obvalkaParts.weightG,
+        isWaste: partTypes.isWaste,
+        normMinPct: partTypes.normMinPct,
+        normMaxPct: partTypes.normMaxPct,
+      })
+      .from(obvalkaParts)
+      .leftJoin(partTypes, eq(obvalkaParts.partTypeId, partTypes.id))
+      .where(eq(obvalkaParts.obvalkaId, o.id));
+    const c = computeObvalka(
+      o.weightG,
+      o.pricePerKg,
+      parts.map((p) => ({
+        name: p.name,
+        weightG: p.weightG,
+        isWaste: p.isWaste ?? false,
+        normMinPct: p.normMinPct,
+        normMaxPct: p.normMaxPct,
+      })),
+    );
+    const anomalies = c.items.filter((i) => i.outOfNorm).length;
+    if (c.balanceFlag || anomalies > 0)
+      obvalkaFlags.push({
+        id: o.id,
+        carcassType: o.carcassType,
+        weightG: o.weightG,
+        createdAt: o.createdAt,
+        lossPct: c.lossPct,
+        balanceFlag: c.balanceFlag,
+        anomalies,
+      });
+  }
+
+  const meatCost = { qoy: await latestMeatCost("qoy"), mol: await latestMeatCost("mol") };
+  const dishes = await computeDishTaannarx(meatCost);
+  const thinDishes = dishes
+    .filter(
+      (d) =>
+        d.salePrice > 0 &&
+        d.meatCostTotal > 0 &&
+        d.meatPct != null &&
+        d.meatPct >= THIN_MARGIN_PCT &&
+        d.meatPct <= 100, // exclude batch/pot recipes (meatPct>100 = per-pot not per-portion)
+    )
+    .sort((a, b) => (b.meatPct ?? 0) - (a.meatPct ?? 0))
+    .slice(0, 8);
+
+  const { startUTC, endUTC, dayKey } = businessDayBounds();
+  const { expectedCash } = await expectedCashForWindow(startUTC, endUTC);
+  const tillRow = (
+    await db.select().from(tillCounts).where(eq(tillCounts.dayKey, dayKey)).limit(1)
+  )[0];
+  const cashVariance = tillRow
+    ? {
+        dayKey,
+        countedCash: tillRow.countedCash,
+        expectedCash,
+        variance: tillRow.countedCash - expectedCash,
+      }
+    : null;
+
+  // yesterday = a CLOSED, complete business day — fair break-even comparison
+  // (today's still-accumulating revenue would always look "below" mid-shift).
+  const yKey = previousDayKey(dayKey);
+  const yBounds = businessDayBounds(yKey);
+  const yFin = await financeForWindow(yBounds.startUTC, yBounds.endUTC);
+  const breakEvenFlag = yFin.checks > 0 && yFin.revenue < BREAK_EVEN_HINT;
+
+  const priceSpikes: {
+    carcassType: "qoy" | "mol";
+    latestPrice: number;
+    medianPrice: number;
+    pct: number;
+  }[] = [];
+  for (const ct of ["qoy", "mol"] as const) {
+    const rows = await db
+      .select({ pricePerKg: obvalka.pricePerKg })
+      .from(obvalka)
+      .where(eq(obvalka.carcassType, ct))
+      .orderBy(desc(obvalka.createdAt))
+      .limit(11);
+    if (rows.length >= 4) {
+      const [latest, ...rest] = rows;
+      const sorted = rest.map((r) => r.pricePerKg).sort((a, b) => a - b);
+      const mid = sorted.length / 2;
+      const median = Number.isInteger(mid)
+        ? ((sorted[mid - 1] ?? 0) + (sorted[mid] ?? 0)) / 2
+        : (sorted[Math.floor(mid)] ?? 0);
+      if (latest != null && median > 0 && latest.pricePerKg > median * MEAT_PRICE_SPIKE_PCT)
+        priceSpikes.push({
+          carcassType: ct,
+          latestPrice: latest.pricePerKg,
+          medianPrice: median,
+          pct: Math.round((latest.pricePerKg / median - 1) * 100),
+        });
+    }
+  }
+
+  const recentApproved = await db
+    .select({ id: inventoryCounts.id })
+    .from(inventoryCounts)
+    .where(eq(inventoryCounts.status, "approved"))
+    .orderBy(desc(inventoryCounts.approvedAt))
+    .limit(5);
+  let shortagePattern: { productId: string; name: string; count: number }[] = [];
+  const historyPending = recentApproved.length < 2;
+  if (recentApproved.length) {
+    const ids = recentApproved.map((r) => r.id);
+    const negRows = await db
+      .select({
+        productId: stockMovements.productId,
+        name: products.name,
+        refId: stockMovements.refId,
+      })
+      .from(stockMovements)
+      .innerJoin(products, eq(stockMovements.productId, products.id))
+      .where(
+        and(
+          eq(stockMovements.type, "inventory_adjust"),
+          inArray(stockMovements.refId, ids),
+          sql`${stockMovements.qty} < 0`,
+        ),
+      );
+    const byProduct = new Map<string, { name: string; counts: Set<string> }>();
+    for (const r of negRows) {
+      if (!r.refId) continue;
+      const e = byProduct.get(r.productId) ?? { name: r.name, counts: new Set<string>() };
+      e.counts.add(r.refId);
+      byProduct.set(r.productId, e);
+    }
+    shortagePattern = [...byProduct.entries()]
+      .filter(([, v]) => v.counts.size >= 2)
+      .map(([productId, v]) => ({ productId, name: v.name, count: v.counts.size }));
+  }
+
+  return {
+    obvalkaFlags,
+    thinDishes,
+    cashVariance,
+    breakEvenFlag,
+    yesterdayRevenue: yFin.revenue,
+    priceSpikes,
+    shortagePattern,
+    historyPending,
+  };
+}
 
 async function financeForWindow(start: Date, end: Date) {
   const payRows = await db
@@ -1389,51 +1663,8 @@ export const appRouter = router({
         )
         .query(async ({ input }) => {
           const { startUTC, endUTC, dayKey } = businessDayBounds(input?.day);
-          const cashRevenue = Number(
-            (
-              await db
-                .select({ s: sql<number>`coalesce(sum(${orderPayments.amount}), 0)` })
-                .from(orderPayments)
-                .innerJoin(orders, eq(orderPayments.orderId, orders.id))
-                .where(
-                  and(
-                    eq(orderPayments.method, "cash"),
-                    eq(orders.status, "closed"),
-                    gte(orders.closedAt, startUTC),
-                    lt(orders.closedAt, endUTC),
-                  ),
-                )
-            )[0]?.s ?? 0,
-          );
-          const cashDebtRepaid = Number(
-            (
-              await db
-                .select({ s: sql<number>`coalesce(sum(${debtPayments.amount}), 0)` })
-                .from(debtPayments)
-                .where(
-                  and(
-                    eq(debtPayments.method, "cash"),
-                    gte(debtPayments.createdAt, startUTC),
-                    lt(debtPayments.createdAt, endUTC),
-                  ),
-                )
-            )[0]?.s ?? 0,
-          );
-          const cashExpenses = Number(
-            (
-              await db
-                .select({ s: sql<number>`coalesce(sum(${expenses.amount}), 0)` })
-                .from(expenses)
-                .where(
-                  and(
-                    eq(expenses.method, "cash"),
-                    gte(expenses.spentAt, startUTC),
-                    lt(expenses.spentAt, endUTC),
-                  ),
-                )
-            )[0]?.s ?? 0,
-          );
-          const expectedCash = TILL_FLOAT + cashRevenue + cashDebtRepaid - cashExpenses;
+          const { cashRevenue, cashDebtRepaid, cashExpenses, expectedCash } =
+            await expectedCashForWindow(startUTC, endUTC);
           const row = (
             await db
               .select()
@@ -1529,6 +1760,304 @@ export const appRouter = router({
           return { ok: true, paidTotal: updated[0]!.paidTotal };
         });
       }),
+  }),
+
+  analytics: router({
+    onHandAll: managerProcedure.query(() => stockableOnHand()),
+
+    activeCounts: managerProcedure.query(async () => {
+      return db
+        .select({
+          id: inventoryCounts.id,
+          storage: inventoryCounts.storage,
+          status: inventoryCounts.status,
+          createdAt: inventoryCounts.createdAt,
+          createdBy: users.name,
+        })
+        .from(inventoryCounts)
+        .leftJoin(users, eq(inventoryCounts.createdById, users.id))
+        .where(inArray(inventoryCounts.status, ["open", "submitted"]))
+        .orderBy(desc(inventoryCounts.createdAt));
+    }),
+
+    countList: managerProcedure
+      .input(z.object({ limit: z.number().int().positive().max(50).optional() }).optional())
+      .query(async ({ input }) => {
+        return db
+          .select({
+            id: inventoryCounts.id,
+            storage: inventoryCounts.storage,
+            status: inventoryCounts.status,
+            createdAt: inventoryCounts.createdAt,
+            submittedAt: inventoryCounts.submittedAt,
+            approvedAt: inventoryCounts.approvedAt,
+            createdBy: users.name,
+          })
+          .from(inventoryCounts)
+          .leftJoin(users, eq(inventoryCounts.createdById, users.id))
+          .orderBy(desc(inventoryCounts.createdAt))
+          .limit(input?.limit ?? 20);
+      }),
+
+    startCount: managerProcedure
+      .input(z.object({ storage: z.enum(STORAGES) }))
+      .mutation(async ({ input, ctx }) => {
+        return db.transaction(async (tx) => {
+          // advisory lock keyed on storage — serializes concurrent startCount
+          // calls for the same storage so the existence-check+insert is atomic
+          await tx.execute(sql`select pg_advisory_xact_lock(hashtext(${input.storage}))`);
+          const existing = (
+            await tx
+              .select({ id: inventoryCounts.id })
+              .from(inventoryCounts)
+              .where(
+                and(
+                  eq(inventoryCounts.storage, input.storage),
+                  inArray(inventoryCounts.status, ["open", "submitted"]),
+                ),
+              )
+              .limit(1)
+          )[0];
+          if (existing) return { id: existing.id, resumed: true };
+
+          const row = (
+            await tx
+              .insert(inventoryCounts)
+              .values({ storage: input.storage, createdById: ctx.user.id })
+              .returning({ id: inventoryCounts.id })
+          )[0];
+          if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+
+          const snapshot = await stockableOnHand(tx);
+          if (snapshot.length)
+            await tx.insert(inventoryItems).values(
+              snapshot.map((p, i) => ({
+                countId: row.id,
+                productId: p.id,
+                theoreticalQty: p.onHand,
+                unit: p.unit,
+                sort: i,
+              })),
+            );
+          return { id: row.id, resumed: false };
+        });
+      }),
+
+    count: managerProcedure
+      .input(z.object({ countId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        const head = (
+          await db
+            .select()
+            .from(inventoryCounts)
+            .where(eq(inventoryCounts.id, input.countId))
+            .limit(1)
+        )[0];
+        if (!head) throw new TRPCError({ code: "NOT_FOUND" });
+        const items = await db
+          .select({
+            id: inventoryItems.id,
+            productId: inventoryItems.productId,
+            name: products.name,
+            type: products.type,
+            unit: inventoryItems.unit,
+            theoreticalQty: inventoryItems.theoreticalQty,
+            countedQty: inventoryItems.countedQty,
+            reason: inventoryItems.reason,
+            costPrice: products.costPrice,
+          })
+          .from(inventoryItems)
+          .innerJoin(products, eq(inventoryItems.productId, products.id))
+          .where(eq(inventoryItems.countId, input.countId))
+          .orderBy(inventoryItems.sort);
+        const meatCost = { qoy: await latestMeatCost("qoy"), mol: await latestMeatCost("mol") };
+        const rows = items.map((it) => {
+          const counted = it.countedQty != null;
+          const diff = (it.countedQty ?? it.theoreticalQty) - it.theoreticalQty;
+          const diffPct =
+            it.theoreticalQty !== 0
+              ? Math.round((diff / Math.abs(it.theoreticalQty)) * 100)
+              : diff !== 0
+                ? null
+                : 0;
+          const carc =
+            it.name === "Мол лаҳм" ? meatCost.mol : it.name === "Қўй лаҳм" ? meatCost.qoy : null;
+          const valueGap =
+            counted && diff !== 0 ? valuePortion(Math.abs(diff), it.unit, it.costPrice, carc) : null;
+          const flag =
+            counted && diff !== 0 && (it.theoreticalQty === 0 || (diffPct != null && Math.abs(diffPct) > 5));
+          return {
+            id: it.id,
+            productId: it.productId,
+            name: it.name,
+            type: it.type,
+            unit: it.unit,
+            theoreticalQty: it.theoreticalQty,
+            countedQty: it.countedQty,
+            counted,
+            diff,
+            diffPct,
+            valueGap,
+            flag,
+            reason: it.reason,
+          };
+        });
+        return {
+          id: head.id,
+          storage: head.storage,
+          status: head.status,
+          note: head.note,
+          createdAt: head.createdAt,
+          submittedAt: head.submittedAt,
+          approvedAt: head.approvedAt,
+          items: rows,
+        };
+      }),
+
+    saveCount: managerProcedure
+      .input(
+        z.object({
+          countId: z.string().uuid(),
+          items: z.array(
+            z.object({
+              itemId: z.string().uuid(),
+              countedQty: z.number().int().nonnegative().nullable(),
+              reason: z.string().optional(),
+            }),
+          ),
+        }),
+      )
+      .mutation(async ({ input }) => {
+        return db.transaction(async (tx) => {
+          // lock the count row so a concurrent submit/approve can't race past
+          // this status check — same pattern as paySupplier/payGuestDebt
+          await tx.execute(
+            sql`select id from ${inventoryCounts} where id = ${input.countId} for update`,
+          );
+          const head = (
+            await tx
+              .select({ status: inventoryCounts.status })
+              .from(inventoryCounts)
+              .where(eq(inventoryCounts.id, input.countId))
+              .limit(1)
+          )[0];
+          if (!head) throw new TRPCError({ code: "NOT_FOUND" });
+          if (head.status !== "open")
+            throw new TRPCError({ code: "BAD_REQUEST", message: "Бу санаш ёпилган" });
+          for (const it of input.items) {
+            await tx
+              .update(inventoryItems)
+              .set({ countedQty: it.countedQty, reason: it.reason ?? null })
+              .where(
+                and(eq(inventoryItems.id, it.itemId), eq(inventoryItems.countId, input.countId)),
+              );
+          }
+          return { ok: true };
+        });
+      }),
+
+    submitCount: managerProcedure
+      .input(z.object({ countId: z.string().uuid() }))
+      .mutation(async ({ input }) => {
+        return db.transaction(async (tx) => {
+          const items = await tx
+            .select({
+              name: products.name,
+              theoreticalQty: inventoryItems.theoreticalQty,
+              countedQty: inventoryItems.countedQty,
+              reason: inventoryItems.reason,
+            })
+            .from(inventoryItems)
+            .innerJoin(products, eq(inventoryItems.productId, products.id))
+            .where(eq(inventoryItems.countId, input.countId));
+          const missing = items.filter(
+            (it) =>
+              it.countedQty != null && it.countedQty !== it.theoreticalQty && !it.reason?.trim(),
+          );
+          if (missing.length)
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: `Фарқ сабаби кўрсатилмаган: ${missing
+                .slice(0, 5)
+                .map((m) => m.name)
+                .join(", ")}`,
+            });
+          const flipped = await tx
+            .update(inventoryCounts)
+            .set({ status: "submitted", submittedAt: new Date() })
+            .where(and(eq(inventoryCounts.id, input.countId), eq(inventoryCounts.status, "open")))
+            .returning({ id: inventoryCounts.id });
+          if (flipped.length === 0) return { ok: true, alreadySubmitted: true };
+          return { ok: true };
+        });
+      }),
+
+    approveCount: directorProcedure
+      .input(z.object({ countId: z.string().uuid() }))
+      .mutation(async ({ input, ctx }) => {
+        return db.transaction(async (tx) => {
+          const flipped = await tx
+            .update(inventoryCounts)
+            .set({ status: "approved", approvedById: ctx.user.id, approvedAt: new Date() })
+            .where(
+              and(eq(inventoryCounts.id, input.countId), eq(inventoryCounts.status, "submitted")),
+            )
+            .returning({ id: inventoryCounts.id });
+          if (flipped.length === 0) return { ok: true, alreadyApproved: true, adjusted: 0 };
+
+          const items = await tx
+            .select()
+            .from(inventoryItems)
+            .where(eq(inventoryItems.countId, input.countId));
+          const moves = items
+            .filter((it) => it.countedQty != null && it.countedQty !== it.theoreticalQty)
+            .map((it) => ({
+              productId: it.productId,
+              type: "inventory_adjust" as const,
+              qty: it.countedQty! - it.theoreticalQty,
+              unit: it.unit,
+              refType: "inventory",
+              refId: input.countId,
+              note: it.reason ?? null,
+              createdById: ctx.user.id,
+            }));
+          if (moves.length) await tx.insert(stockMovements).values(moves);
+          return { ok: true, alreadyApproved: false, adjusted: moves.length };
+        });
+      }),
+
+    signals: directorProcedure.query(() => computeSignals()),
+
+    digest: directorProcedure.query(async () => {
+      const { startUTC, endUTC } = businessDayBounds();
+      const todayFin = await financeForWindow(startUTC, endUTC);
+      const estCogs = Math.round(todayFin.revenue * BLENDED_COGS_PCT);
+      const estProfit = todayFin.revenue - estCogs - todayFin.opex - todayFin.cardTax;
+
+      const { supplierTotal, guestTotal } = await debtTotals();
+      const stock = await stockableOnHand();
+      const lowStock = stock.filter((p) => p.onHand < 0).length;
+
+      const sig = await computeSignals();
+      const anomalyCount =
+        sig.obvalkaFlags.length +
+        sig.thinDishes.length +
+        (sig.cashVariance && sig.cashVariance.variance !== 0 ? 1 : 0) +
+        (sig.breakEvenFlag ? 1 : 0) +
+        sig.priceSpikes.length +
+        sig.shortagePattern.length;
+
+      return {
+        revenueToday: todayFin.revenue,
+        estProfit,
+        estCogsPct: BLENDED_COGS_PCT,
+        anomalyCount,
+        lowStock,
+        debtToday: supplierTotal + guestTotal,
+        supplierDebt: supplierTotal,
+        guestDebt: guestTotal,
+      };
+    }),
   }),
 });
 
