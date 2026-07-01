@@ -1,10 +1,23 @@
 import { serve } from "@hono/node-server";
 import { trpcServer } from "@hono/trpc-server";
 import { Hono } from "hono";
+import { reportError } from "./alert";
 import { createContext } from "./context";
 import { appRouter } from "./router";
 
+// Failures must never be silent (see docs — pre-launch audit finding): a crash
+// or unhandled rejection previously left staff staring at a blank screen with
+// no one aware anything broke. These two handlers are the last resort — most
+// errors are already caught per-request below.
+process.on("uncaughtException", (err) => reportError("uncaughtException", err));
+process.on("unhandledRejection", (err) => reportError("unhandledRejection", err));
+
 const app = new Hono();
+
+app.onError((err, c) => {
+  reportError(`${c.req.method} ${c.req.path}`, err);
+  return c.json({ error: "internal_error" }, 500);
+});
 
 app.use("/trpc/*", trpcServer({ router: appRouter, createContext }));
 

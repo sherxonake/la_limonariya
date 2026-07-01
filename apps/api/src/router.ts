@@ -3,10 +3,13 @@ import { sql } from "drizzle-orm";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import {
+  checkLoginRateLimit,
+  clearLoginAttempts,
   hashPin,
   hashToken,
   newSessionToken,
   pinLookup,
+  recordFailedLogin,
   verifyPin,
 } from "./auth";
 import { SESSION_COOKIE } from "./context";
@@ -612,7 +615,10 @@ async function financeForWindow(start: Date, end: Date) {
     if (p.method !== "debt") revenue += p.amount;
   }
   const electronic =
-    (byMethod.card ?? 0) + (byMethod.click ?? 0) + (byMethod.payme ?? 0);
+    (byMethod.card ?? 0) +
+    (byMethod.click ?? 0) +
+    (byMethod.payme ?? 0) +
+    (byMethod.humo ?? 0);
   const cardTax = Math.round((electronic * 4) / 100);
   const guestDebt = byMethod.debt ?? 0;
 
@@ -638,10 +644,15 @@ async function financeForWindow(start: Date, end: Date) {
     .select({ category: expenses.category, amount: expenses.amount })
     .from(expenses)
     .where(and(gte(expenses.spentAt, start), lt(expenses.spentAt, end)));
+  // ega_oldi (owner draw) is a distribution, NOT an operating expense — it must
+  // NOT reduce sofFoyda, otherwise "real profit" silently shrinks every time the
+  // owner takes cash out. Kept in opexByCat (for visibility) but excluded from opex.
   let opex = 0;
+  let ownerDraw = 0;
   const opexByCat: Record<string, number> = {};
   for (const e of expRows) {
-    opex += e.amount;
+    if (e.category === "ega_oldi") ownerDraw += e.amount;
+    else opex += e.amount;
     opexByCat[e.category] = (opexByCat[e.category] ?? 0) + e.amount;
   }
 
@@ -662,6 +673,7 @@ async function financeForWindow(start: Date, end: Date) {
     unpricedNames: cogsRes.unpricedNames,
     opex,
     opexByCat,
+    ownerDraw,
     sofFoyda,
   };
 }
@@ -785,6 +797,18 @@ export const appRouter = router({
     login: publicProcedure
       .input(z.object({ pin: pinSchema }))
       .mutation(async ({ input, ctx }) => {
+        const ip =
+          ctx.c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ?? "unknown";
+
+        const rl = checkLoginRateLimit(ip);
+        if (rl.blocked) {
+          const min = Math.ceil(rl.retryAfterMs / 60000);
+          throw new TRPCError({
+            code: "TOO_MANY_REQUESTS",
+            message: `Жуда кўп хато уриниш. ${min} дақиқадан сўнг қайта уринг.`,
+          });
+        }
+
         const u = (
           await db
             .select()
@@ -796,8 +820,10 @@ export const appRouter = router({
         )[0];
 
         if (!u || !u.pinHash || !verifyPin(input.pin, u.pinHash)) {
+          recordFailedLogin(ip);
           throw new TRPCError({ code: "UNAUTHORIZED", message: "PIN noto'g'ri" });
         }
+        clearLoginAttempts(ip);
 
         const { token, tokenHash } = newSessionToken();
         const expiresAt = new Date(Date.now() + SESSION_MS);
@@ -1519,7 +1545,7 @@ export const appRouter = router({
           payments: z
             .array(
               z.object({
-                method: z.enum(["cash", "card", "click", "payme", "debt"]),
+                method: z.enum(["cash", "card", "click", "payme", "humo", "debt"]),
                 amount: z.number().int().nonnegative(),
               }),
             )
@@ -1881,9 +1907,17 @@ export const appRouter = router({
       create: directorProcedure
         .input(
           z.object({
-            category: z.enum(["ijara", "gaz", "elektr", "ish_haqi", "jihoz", "boshqa"]),
+            category: z.enum([
+              "ijara",
+              "gaz",
+              "elektr",
+              "ish_haqi",
+              "jihoz",
+              "ega_oldi",
+              "boshqa",
+            ]),
             amount: z.number().int().positive(),
-            method: z.enum(["cash", "card", "click", "payme", "debt"]).optional(),
+            method: z.enum(["cash", "card", "click", "payme", "humo", "debt"]).optional(),
             recurring: z.boolean().optional(),
             note: z.string().optional(),
             day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -2006,7 +2040,7 @@ export const appRouter = router({
         z.object({
           orderId: z.string().uuid(),
           amount: z.number().int().positive(),
-          method: z.enum(["cash", "card", "click", "payme"]).optional(),
+          method: z.enum(["cash", "card", "click", "payme", "humo"]).optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
