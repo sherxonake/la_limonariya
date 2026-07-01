@@ -32,6 +32,11 @@ docker compose up -d --build
 ```
 Изоляция: ўз Docker network + `pgdata` volume. Бошқа сервислар/портларга таъсир қилмайди.
 
+**Backup:** `backup` сервиси ҳар куни `pg_dump` қилиб, `./backups/` папкага (хост
+диски, Docker volume эмас) сақлайди, `BACKUP_KEEP_DAYS` (default 14) кундан
+эскисини ўчиради. Тўлиқ ҳимоя учун `./backups/`ни вақти-вақти билан ташқи
+диск/cloud'га кўчириб туринг (бу қадам ҳали Docker'дан ташқарида, қўлда).
+
 ## Локал dev (Docker'сиз)
 
 ```bash

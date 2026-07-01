@@ -249,6 +249,7 @@ export const paymentMethod = pgEnum("payment_method", [
   "card",
   "click",
   "payme",
+  "humo",
   "debt",
 ]);
 
@@ -333,6 +334,7 @@ export const expenseCategory = pgEnum("expense_category", [
   "elektr", // свет/электр
   "ish_haqi", // ойлик (зарплата)
   "jihoz", // жиҳоз/техника
+  "ega_oldi", // эга олди — OPEX эмас, тақсимот (P&L'дан ЧИҚАРИЛАДИ, financeForWindow'га қаранг)
   "boshqa", // прочее
 ]);
 

@@ -18,7 +18,7 @@ type OpenOrder = {
   qty: number;
   total: number;
 };
-type PayMethod = "cash" | "card" | "click" | "payme" | "debt";
+type PayMethod = "cash" | "card" | "click" | "payme" | "humo" | "debt";
 type Order = {
   id: string;
   checkNo: string;
@@ -48,6 +48,7 @@ const PAY_LABEL: Record<string, string> = {
   card: "Карта",
   click: "Click",
   payme: "Payme",
+  humo: "Ҳумо",
   debt: "Қарз",
 };
 
@@ -365,7 +366,7 @@ function OrderView({ id, user, onBack }: { id: string; user: SessionUser; onBack
           </p>
           {!showComp && (
             <div className="grid grid-cols-3 gap-2">
-              {(["cash", "card", "click", "payme", "debt"] as PayMethod[]).map(
+              {(["cash", "card", "click", "payme", "humo", "debt"] as PayMethod[]).map(
                 (m) => (
                   <button
                     key={m}

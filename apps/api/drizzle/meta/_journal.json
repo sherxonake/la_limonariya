@@ -120,6 +120,13 @@
       "when": 1782856173726,
       "tag": "0016_bumpy_tomorrow_man",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1782909310113,
+      "tag": "0017_slow_star_brand",
+      "breakpoints": true
     }
   ]
 }
