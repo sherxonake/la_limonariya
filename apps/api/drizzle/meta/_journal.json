@@ -127,6 +127,13 @@
       "when": 1782899824037,
       "tag": "0017_unusual_vermin",
       "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1783002120991,
+      "tag": "0018_humo_ega_oldi_tovuq_inventar",
+      "breakpoints": true
     }
   ]
 }

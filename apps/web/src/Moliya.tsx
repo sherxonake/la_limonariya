@@ -10,6 +10,7 @@ const CAT: Record<string, string> = {
   elektr: "Свет",
   ish_haqi: "Ойлик",
   jihoz: "Жиҳоз",
+  ega_oldi: "Эга олди",
   boshqa: "Бошқа",
 };
 const CATS = Object.keys(CAT);
@@ -18,6 +19,7 @@ const METHOD: Record<string, string> = {
   card: "Карта",
   click: "Click",
   payme: "Payme",
+  humo: "Ҳумо",
   debt: "Қарз",
 };
 
@@ -134,6 +136,7 @@ type Fin = {
   unpricedNames: string[];
   opex: number;
   opexByCat: Record<string, number>;
+  ownerDraw: number;
   sofFoyda: number;
 };
 
@@ -151,6 +154,9 @@ function FinView({ f }: { f: Fin }) {
         />
         <Big label="Себестоимость" value={fmt(f.cogs)} sub={f.cogsPartial ? "қисман ⚠️" : "списание"} />
         <Big label="Харажат (OPEX)" value={fmt(f.opex)} sub="so'm" />
+        {f.ownerDraw > 0 && (
+          <Big label="Эга олди" value={fmt(f.ownerDraw)} sub="тақсимот, OPEX эмас" />
+        )}
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
@@ -169,16 +175,19 @@ function FinView({ f }: { f: Fin }) {
         </div>
 
         <div className="overflow-hidden rounded-xl border bg-white">
-          <div className="border-b px-4 py-2.5 text-sm font-semibold">Харажатлар</div>
-          {Object.keys(f.opexByCat).length === 0 ? (
-            <div className="px-4 py-6 text-center text-sm text-zinc-400">харажат йўқ</div>
-          ) : (
-            <div className="divide-y text-sm">
-              {Object.entries(f.opexByCat).map(([c, v]) => (
-                <Row key={c} l={CAT[c] ?? c} v={fmt(v)} />
-              ))}
-            </div>
-          )}
+          <div className="border-b px-4 py-2.5 text-sm font-semibold">Харажатлар (OPEX)</div>
+          {(() => {
+            const opexOnly = Object.entries(f.opexByCat).filter(([c]) => c !== "ega_oldi");
+            return opexOnly.length === 0 ? (
+              <div className="px-4 py-6 text-center text-sm text-zinc-400">харажат йўқ</div>
+            ) : (
+              <div className="divide-y text-sm">
+                {opexOnly.map(([c, v]) => (
+                  <Row key={c} l={CAT[c] ?? c} v={fmt(v)} />
+                ))}
+              </div>
+            );
+          })()}
         </div>
       </div>
 
@@ -605,7 +614,9 @@ function Debts() {
                           await trpc.finance.payGuestDebt.mutate({
                             orderId: g.orderId,
                             amount,
-                            method: (method as "cash" | "card" | "click" | "payme") ?? "cash",
+                            method:
+                              (method as "cash" | "card" | "click" | "payme" | "humo") ??
+                              "cash",
                           });
                         },
                       })
@@ -673,7 +684,7 @@ function PayModal({
         />
         {target.showMethod && (
           <div className="flex gap-1.5">
-            {["cash", "card", "click", "payme"].map((m) => (
+            {["cash", "card", "click", "payme", "humo"].map((m) => (
               <button
                 key={m}
                 onClick={() => setMethod(m)}

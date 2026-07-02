@@ -26,6 +26,9 @@ services:
       PORT: 3000
       PIN_PEPPER: ${PIN_PEPPER:-dev-pepper-change-me}
       BOOTSTRAP_DIRECTOR_PIN: ${BOOTSTRAP_DIRECTOR_PIN:-1234}
+      # Ixtiyoriy — bo'sh bo'lsa xatolar faqat `docker compose logs api`da ko'rinadi.
+      ALERT_TELEGRAM_BOT_TOKEN: ${ALERT_TELEGRAM_BOT_TOKEN:-}
+      ALERT_TELEGRAM_CHAT_ID: ${ALERT_TELEGRAM_CHAT_ID:-}
     depends_on:
       postgres:
         condition: service_healthy
@@ -39,6 +42,26 @@ services:
       - "${WEB_PORT:-8080}:80"
     depends_on:
       - api
+
+  # Daily pg_dump -> ./backups (host bind-mount, NOT a named volume — survives
+  # `docker compose down -v`). Copy ./backups to an external drive/cloud on a
+  # schedule outside Docker for full off-site protection.
+  backup:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: limon
+      POSTGRES_DB: limonariya
+      PGPASSWORD: ${POSTGRES_PASSWORD:-limon_dev}
+      BACKUP_KEEP_DAYS: ${BACKUP_KEEP_DAYS:-14}
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - ./docker/restore.sh:/restore.sh:ro
+      - ./backups:/backups
+    entrypoint: ["/bin/sh", "/backup.sh"]
+    depends_on:
+      postgres:
+        condition: service_healthy
 
 volumes:
   pgdata:

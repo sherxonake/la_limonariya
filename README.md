@@ -32,6 +32,19 @@ docker compose up -d --build
 ```
 Изоляция: ўз Docker network + `pgdata` volume. Бошқа сервислар/портларга таъсир қилмайди.
 
+**Backup:** `backup` сервиси ҳар куни `pg_dump` қилиб, `./backups/` папкага (хост
+диски, Docker volume эмас) сақлайди, `BACKUP_KEEP_DAYS` (default 14) кундан
+эскисини ўчиради. Тўлиқ ҳимоя учун `./backups/`ни вақти-вақти билан ташқи
+диск/cloud'га кўчириб туринг (бу қадам ҳали Docker'дан ташқарида, қўлда).
+
+**Restore (тик турганда тест қилиб кўринг, инцидентда эмас):**
+```bash
+docker compose run --rm --entrypoint /bin/sh backup /restore.sh limonariya_20260702_030000.sql.gz
+# ёки энг сўнггисини қайтариш учун файл номисиз:
+docker compose run --rm --entrypoint /bin/sh backup /restore.sh
+```
+Диққат: жорий базани dump ичидагиси билан алмаштиради (destructive).
+
 ## Локал dev (Docker'сиз)
 
 ```bash

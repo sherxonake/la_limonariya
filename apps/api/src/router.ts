@@ -1,17 +1,23 @@
 import { and, count, desc, eq, gte, inArray, lt } from "drizzle-orm";
 import { sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { deleteCookie, getCookie, setCookie } from "hono/cookie";
 import { z } from "zod";
 import {
+  checkLoginRateLimit,
+  clearLoginAttempts,
   hashPin,
   hashToken,
   newSessionToken,
   pinLookup,
+  recordFailedLogin,
   verifyPin,
 } from "./auth";
 import { SESSION_COOKIE } from "./context";
 import { db } from "./db/client";
 import {
+  assetMovements,
+  assets,
   categories,
   debtPayments,
   expenses,
@@ -53,7 +59,7 @@ const SESSION_MS = 7 * 24 * 60 * 60 * 1000;
 const pinSchema = z.string().regex(/^\d{4}$/, "PIN — 4 ta raqam");
 
 // Real per-kg meat cost = cost of the latest recorded carcass of this type.
-async function latestMeatCost(ct: "qoy" | "mol"): Promise<number | null> {
+async function latestMeatCost(ct: "qoy" | "mol" | "tovuq"): Promise<number | null> {
   const head = (
     await db
       .select()
@@ -93,6 +99,7 @@ async function latestMeatCost(ct: "qoy" | "mol"): Promise<number | null> {
 async function computeDishTaannarx(meatCost: {
   qoy: number | null;
   mol: number | null;
+  tovuq: number | null;
 }) {
   const recs = await db
     .select({
@@ -127,9 +134,10 @@ async function computeDishTaannarx(meatCost: {
   const carcassOf = (
     hint: string | null,
     category: string | null,
-  ): "qoy" | "mol" | null => {
+  ): "qoy" | "mol" | "tovuq" | null => {
     if (!/обвалка|лаҳм|гўшт|гушт/i.test(`${hint ?? ""}`)) return null;
     const s = `${hint ?? ""} ${category ?? ""}`;
+    if (/товуқ|товук|тову/i.test(s)) return "tovuq";
     if (/мол/i.test(s)) return "mol";
     if (/қўй|қуй|куй/i.test(s)) return "qoy";
     return null;
@@ -189,6 +197,7 @@ async function cogsForWindow(start: Date, end: Date) {
   const meat = {
     qoy: await latestMeatCost("qoy"),
     mol: await latestMeatCost("mol"),
+    tovuq: await latestMeatCost("tovuq"),
   };
   const rows = await db
     .select({
@@ -211,7 +220,13 @@ async function cogsForWindow(start: Date, end: Date) {
   const unpriced = new Set<string>();
   for (const r of rows) {
     const carc =
-      r.name === "Мол лаҳм" ? meat.mol : r.name === "Қўй лаҳм" ? meat.qoy : null;
+      r.name === "Мол лаҳм"
+        ? meat.mol
+        : r.name === "Қўй лаҳм"
+          ? meat.qoy
+          : r.name === "Товуқ гўшти"
+            ? meat.tovuq
+            : null;
     const v = valuePortion(Math.abs(r.qty), r.unit, r.costPrice, carc);
     if (v == null) {
       unpriced.add(r.name);
@@ -457,7 +472,11 @@ async function computeSignals() {
       });
   }
 
-  const meatCost = { qoy: await latestMeatCost("qoy"), mol: await latestMeatCost("mol") };
+  const meatCost = {
+    qoy: await latestMeatCost("qoy"),
+    mol: await latestMeatCost("mol"),
+    tovuq: await latestMeatCost("tovuq"),
+  };
   const dishes = await computeDishTaannarx(meatCost);
   const thinDishes = dishes
     .filter(
@@ -493,12 +512,12 @@ async function computeSignals() {
   const breakEvenFlag = yFin.checks > 0 && yFin.revenue < BREAK_EVEN_HINT;
 
   const priceSpikes: {
-    carcassType: "qoy" | "mol";
+    carcassType: "qoy" | "mol" | "tovuq";
     latestPrice: number;
     medianPrice: number;
     pct: number;
   }[] = [];
-  for (const ct of ["qoy", "mol"] as const) {
+  for (const ct of ["qoy", "mol", "tovuq"] as const) {
     const rows = await db
       .select({ pricePerKg: obvalka.pricePerKg })
       .from(obvalka)
@@ -613,7 +632,10 @@ async function financeForWindow(start: Date, end: Date) {
     if (p.method !== "debt") revenue += p.amount;
   }
   const electronic =
-    (byMethod.card ?? 0) + (byMethod.click ?? 0) + (byMethod.payme ?? 0);
+    (byMethod.card ?? 0) +
+    (byMethod.click ?? 0) +
+    (byMethod.payme ?? 0) +
+    (byMethod.humo ?? 0);
   const cardTax = Math.round((electronic * 4) / 100);
   const guestDebt = byMethod.debt ?? 0;
 
@@ -639,10 +661,15 @@ async function financeForWindow(start: Date, end: Date) {
     .select({ category: expenses.category, amount: expenses.amount })
     .from(expenses)
     .where(and(gte(expenses.spentAt, start), lt(expenses.spentAt, end)));
+  // ega_oldi (owner draw) is a distribution, NOT an operating expense — it must
+  // NOT reduce sofFoyda, otherwise "real profit" silently shrinks every time the
+  // owner takes cash out. Kept in opexByCat (for visibility) but excluded from opex.
   let opex = 0;
+  let ownerDraw = 0;
   const opexByCat: Record<string, number> = {};
   for (const e of expRows) {
-    opex += e.amount;
+    if (e.category === "ega_oldi") ownerDraw += e.amount;
+    else opex += e.amount;
     opexByCat[e.category] = (opexByCat[e.category] ?? 0) + e.amount;
   }
 
@@ -663,6 +690,7 @@ async function financeForWindow(start: Date, end: Date) {
     unpricedNames: cogsRes.unpricedNames,
     opex,
     opexByCat,
+    ownerDraw,
     sofFoyda,
   };
 }
@@ -786,6 +814,35 @@ export const appRouter = router({
     login: publicProcedure
       .input(z.object({ pin: pinSchema }))
       .mutation(async ({ input, ctx }) => {
+        // cf-connecting-ip is set by Cloudflare's edge and can't be spoofed by
+        // the client. x-forwarded-for's LAST segment is the nearest hop (Caddy
+        // itself, which appends — never replaces — the header), unlike the
+        // first segment, which is attacker-controlled. Either way, IP alone is
+        // a soft signal (NAT/shared terminals), so we also rate-limit per PIN
+        // below — that's the guarantee that can't be defeated by IP spoofing.
+        const xff = ctx.c.req.header("x-forwarded-for");
+        const ip =
+          ctx.c.req.header("cf-connecting-ip")?.trim() ||
+          xff
+            ?.split(",")
+            .map((s) => s.trim())
+            .filter(Boolean)
+            .at(-1) ||
+          "unknown";
+        const ipKey = `ip:${ip}`;
+        const pinKey = `pin:${pinLookup(input.pin)}`;
+
+        for (const key of [ipKey, pinKey]) {
+          const rl = checkLoginRateLimit(key);
+          if (rl.blocked) {
+            const min = Math.ceil(rl.retryAfterMs / 60000);
+            throw new TRPCError({
+              code: "TOO_MANY_REQUESTS",
+              message: `Жуда кўп хато уриниш. ${min} дақиқадан сўнг қайта уринг.`,
+            });
+          }
+        }
+
         const u = (
           await db
             .select()
@@ -797,8 +854,12 @@ export const appRouter = router({
         )[0];
 
         if (!u || !u.pinHash || !verifyPin(input.pin, u.pinHash)) {
+          recordFailedLogin(ipKey);
+          recordFailedLogin(pinKey);
           throw new TRPCError({ code: "UNAUTHORIZED", message: "PIN noto'g'ri" });
         }
+        clearLoginAttempts(ipKey);
+        clearLoginAttempts(pinKey);
 
         const { token, tokenHash } = newSessionToken();
         const expiresAt = new Date(Date.now() + SESSION_MS);
@@ -1209,7 +1270,7 @@ export const appRouter = router({
 
   obvalka: router({
     partTypes: protectedProcedure
-      .input(z.object({ carcassType: z.enum(["qoy", "mol"]) }))
+      .input(z.object({ carcassType: z.enum(["qoy", "mol", "tovuq"]) }))
       .query(async ({ input }) => {
         return db
           .select({
@@ -1282,7 +1343,7 @@ export const appRouter = router({
     create: protectedProcedure
       .input(
         z.object({
-          carcassType: z.enum(["qoy", "mol"]),
+          carcassType: z.enum(["qoy", "mol", "tovuq"]),
           weightG: z.number().int().positive(),
           pricePerKg: z.number().int().nonnegative(),
           supplier: z.string().optional(),
@@ -1336,7 +1397,11 @@ export const appRouter = router({
             return pt && !pt.isWaste ? s + p.weightG : s;
           }, 0);
           const carcassName =
-            input.carcassType === "mol" ? "Мол лаҳм" : "Қўй лаҳм";
+            input.carcassType === "mol"
+              ? "Мол лаҳм"
+              : input.carcassType === "qoy"
+                ? "Қўй лаҳм"
+                : "Товуқ гўшти";
           const cp = (
             await tx
               .select({ id: products.id })
@@ -1361,11 +1426,192 @@ export const appRouter = router({
       }),
   }),
 
+  // Идиш-товоқ/мебель/техника — food/COGS'дан алоҳида. Ҳозирги сон saqlanmaydi,
+  // stock_movements каби ledger'dan SUM орқали ҳисобланади (drift bo'lmasligi uchun).
+  assets: router({
+    list: managerProcedure.query(async () => {
+      return db
+        .select({
+          id: assets.id,
+          category: assets.category,
+          name: assets.name,
+          note: assets.note,
+          price: assets.price,
+          qty: sql<number>`coalesce(sum(${assetMovements.qty}), 0)`.mapWith(Number),
+        })
+        .from(assets)
+        .leftJoin(assetMovements, eq(assetMovements.assetId, assets.id))
+        .where(eq(assets.active, true))
+        .groupBy(assets.id)
+        .orderBy(assets.category, assets.name);
+    }),
+
+    create: managerProcedure
+      .input(
+        z.object({
+          category: z.enum(["idish", "mebel", "texnika", "boshqa"]),
+          name: z.string().trim().min(1),
+          note: z.string().optional(),
+          price: z.number().int().nonnegative().optional(),
+          initialQty: z.number().int().positive().optional(),
+        }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        let row: (typeof assets.$inferSelect) | undefined;
+        try {
+          row = (
+            await db
+              .insert(assets)
+              .values({
+                category: input.category,
+                name: input.name,
+                note: input.note ?? null,
+                price: input.price ?? null,
+              })
+              .returning()
+          )[0];
+        } catch (e) {
+          if (e && typeof e === "object" && "code" in e && e.code === "23505") {
+            throw new TRPCError({ code: "CONFLICT", message: "Шу турдан аллақачон бор" });
+          }
+          throw e;
+        }
+        if (!row) throw new TRPCError({ code: "INTERNAL_SERVER_ERROR" });
+        if (input.initialQty)
+          await db.insert(assetMovements).values({
+            assetId: row.id,
+            qty: input.initialQty,
+            reason: "kirim",
+            createdById: ctx.user.id,
+          });
+        return { id: row.id };
+      }),
+
+    setPrice: managerProcedure
+      .input(z.object({ assetId: z.string().uuid(), price: z.number().int().nonnegative() }))
+      .mutation(async ({ input }) => {
+        await db.update(assets).set({ price: input.price }).where(eq(assets.id, input.assetId));
+        return { ok: true };
+      }),
+
+    adjust: managerProcedure
+      .input(
+        z
+          .object({
+            assetId: z.string().uuid(),
+            qty: z.number().int().refine((n) => n !== 0),
+            reason: z.enum(["kirim", "sindi", "yoqoldi", "tuzatish"]),
+            note: z.string().optional(),
+            responsibleId: z.string().uuid().optional(),
+          })
+          // kirim is always an increase, sindi/yoqoldi always a decrease —
+          // tuzatish (recount correction) is the only reason allowed either
+          // sign. Server-side, not just UI, since qty's sign drives the
+          // drift-free SUM the whole ledger design depends on.
+          .refine((v) => v.reason !== "kirim" || v.qty > 0, {
+            message: "Кирим сони мусбат бўлиши керак",
+          })
+          .refine((v) => !["sindi", "yoqoldi"].includes(v.reason) || v.qty < 0, {
+            message: "Синди/йўқолди сони манфий бўлиши керак",
+          }),
+      )
+      .mutation(async ({ input, ctx }) => {
+        // Зарар суммаси faqat sindi/yoqoldi'да, faqat narx maʼlum bo'lsa —
+        // snapshot qilamiz (keyin narx o'zgarsa ham eski voqea o'zgarmasin).
+        let unitPrice: number | null = null;
+        if (input.reason === "sindi" || input.reason === "yoqoldi") {
+          const a = (
+            await db.select({ price: assets.price }).from(assets).where(eq(assets.id, input.assetId)).limit(1)
+          )[0];
+          unitPrice = a?.price ?? null;
+        }
+        await db.insert(assetMovements).values({
+          assetId: input.assetId,
+          qty: input.qty,
+          reason: input.reason,
+          note: input.note ?? null,
+          responsibleId: input.responsibleId ?? null,
+          unitPrice,
+          createdById: ctx.user.id,
+        });
+        return { ok: true };
+      }),
+
+    history: managerProcedure
+      .input(z.object({ assetId: z.string().uuid() }))
+      .query(async ({ input }) => {
+        const responsible = alias(users, "responsible");
+        return db
+          .select({
+            id: assetMovements.id,
+            qty: assetMovements.qty,
+            reason: assetMovements.reason,
+            note: assetMovements.note,
+            unitPrice: assetMovements.unitPrice,
+            createdAt: assetMovements.createdAt,
+            createdByName: users.name,
+            responsibleName: responsible.name,
+          })
+          .from(assetMovements)
+          .leftJoin(users, eq(users.id, assetMovements.createdById))
+          .leftJoin(responsible, eq(responsible.id, assetMovements.responsibleId))
+          .where(eq(assetMovements.assetId, input.assetId))
+          .orderBy(desc(assetMovements.createdAt));
+      }),
+
+    // "Официантга пул берадиган вақт" учун — ким қанча зарар қилгани,
+    // faqat narxi maʼlum (unitPrice snapshot qilingan) voqealardan.
+    damageByStaff: managerProcedure.query(async () => {
+      const responsible = alias(users, "responsible");
+      const rows = await db
+        .select({
+          responsibleId: assetMovements.responsibleId,
+          responsibleName: responsible.name,
+          totalSom: sql<number>`sum(abs(${assetMovements.qty}) * ${assetMovements.unitPrice})`.mapWith(Number),
+          totalQty: sql<number>`sum(abs(${assetMovements.qty}))`.mapWith(Number),
+        })
+        .from(assetMovements)
+        .innerJoin(responsible, eq(responsible.id, assetMovements.responsibleId))
+        .where(
+          and(
+            inArray(assetMovements.reason, ["sindi", "yoqoldi"]),
+            sql`${assetMovements.unitPrice} is not null`,
+          ),
+        )
+        .groupBy(assetMovements.responsibleId, responsible.name)
+        .orderBy(desc(sql`sum(abs(${assetMovements.qty}) * ${assetMovements.unitPrice})`));
+      // Damage on assets with no price set has no unitPrice snapshot and would
+      // otherwise vanish from the report above with no signal — surface a count
+      // so the owner knows the total understates real losses (same pattern as
+      // Moliya's cogsPartial/unpricedNames for missing product prices).
+      const unpriced = (
+        await db
+          .select({ n: count() })
+          .from(assetMovements)
+          .where(
+            and(
+              inArray(assetMovements.reason, ["sindi", "yoqoldi"]),
+              sql`${assetMovements.unitPrice} is null`,
+            ),
+          )
+      )[0];
+      return { rows, unpricedCount: unpriced?.n ?? 0 };
+    }),
+
+    deactivate: managerProcedure
+      .input(z.object({ assetId: z.string().uuid() }))
+      .mutation(async ({ input }) => {
+        await db.update(assets).set({ active: false }).where(eq(assets.id, input.assetId));
+        return { ok: true };
+      }),
+  }),
+
   taannarx: router({
     list: directorProcedure.query(async () => {
       const meatCost = {
         qoy: await latestMeatCost("qoy"),
         mol: await latestMeatCost("mol"),
+        tovuq: await latestMeatCost("tovuq"),
       };
       return { meatCost, dishes: await computeDishTaannarx(meatCost) };
     }),
@@ -1376,6 +1622,7 @@ export const appRouter = router({
       const meatCost = {
         qoy: await latestMeatCost("qoy"),
         mol: await latestMeatCost("mol"),
+        tovuq: await latestMeatCost("tovuq"),
       };
 
       const typeRows = await db
@@ -1747,7 +1994,7 @@ export const appRouter = router({
           payments: z
             .array(
               z.object({
-                method: z.enum(["cash", "card", "click", "payme", "debt"]),
+                method: z.enum(["cash", "card", "click", "payme", "humo", "debt"]),
                 amount: z.number().int().nonnegative(),
               }),
             )
@@ -1796,10 +2043,11 @@ export const appRouter = router({
           const carc = await tx
             .select({ id: products.id, name: products.name })
             .from(products)
-            .where(inArray(products.name, ["Мол лаҳм", "Қўй лаҳм"]))
+            .where(inArray(products.name, ["Мол лаҳм", "Қўй лаҳм", "Товуқ гўшти"]))
             .orderBy(products.createdAt);
           const molId = carc.find((c) => c.name === "Мол лаҳм")?.id ?? null;
           const qoyId = carc.find((c) => c.name === "Қўй лаҳм")?.id ?? null;
+          const tovuqId = carc.find((c) => c.name === "Товуқ гўшти")?.id ?? null;
 
           // product type/unit lookup — only deduct stock-leaf, non-dona components (in grams)
           const prodMap = new Map(
@@ -1873,13 +2121,15 @@ export const appRouter = router({
               if (ri.qtyG == null) continue;
               const hint = ri.stockHint ?? "";
               let target: string | null = null;
-              if (/обвалка|лаҳм/i.test(hint)) {
-                // carcass meat → grams against the 2 carcass products
-                target = /мол/i.test(hint)
-                  ? molId
-                  : /қўй|қуй|куй/i.test(hint)
-                    ? qoyId
-                    : null;
+              if (/обвалка|лаҳм|гўшт|гушт/i.test(hint)) {
+                // carcass meat → grams against the carcass products
+                target = /товуқ|товук|тову/i.test(hint)
+                  ? tovuqId
+                  : /мол/i.test(hint)
+                    ? molId
+                    : /қўй|қуй|куй/i.test(hint)
+                      ? qoyId
+                      : null;
               } else if (ri.componentId) {
                 // mapped ingredient: only a stock-leaf, weight-unit product (grams)
                 const c = prodMap.get(ri.componentId);
@@ -2109,9 +2359,17 @@ export const appRouter = router({
       create: directorProcedure
         .input(
           z.object({
-            category: z.enum(["ijara", "gaz", "elektr", "ish_haqi", "jihoz", "boshqa"]),
+            category: z.enum([
+              "ijara",
+              "gaz",
+              "elektr",
+              "ish_haqi",
+              "jihoz",
+              "ega_oldi",
+              "boshqa",
+            ]),
             amount: z.number().int().positive(),
-            method: z.enum(["cash", "card", "click", "payme", "debt"]).optional(),
+            method: z.enum(["cash", "card", "click", "payme", "humo", "debt"]).optional(),
             recurring: z.boolean().optional(),
             note: z.string().optional(),
             day: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
@@ -2234,7 +2492,7 @@ export const appRouter = router({
         z.object({
           orderId: z.string().uuid(),
           amount: z.number().int().positive(),
-          method: z.enum(["cash", "card", "click", "payme"]).optional(),
+          method: z.enum(["cash", "card", "click", "payme", "humo"]).optional(),
         }),
       )
       .mutation(async ({ input, ctx }) => {
@@ -2498,7 +2756,11 @@ export const appRouter = router({
           .innerJoin(products, eq(inventoryItems.productId, products.id))
           .where(eq(inventoryItems.countId, input.countId))
           .orderBy(inventoryItems.sort);
-        const meatCost = { qoy: await latestMeatCost("qoy"), mol: await latestMeatCost("mol") };
+        const meatCost = {
+          qoy: await latestMeatCost("qoy"),
+          mol: await latestMeatCost("mol"),
+          tovuq: await latestMeatCost("tovuq"),
+        };
         const rows = items.map((it) => {
           const counted = it.countedQty != null;
           const diff = (it.countedQty ?? it.theoreticalQty) - it.theoreticalQty;
@@ -2509,7 +2771,13 @@ export const appRouter = router({
                 ? null
                 : 0;
           const carc =
-            it.name === "Мол лаҳм" ? meatCost.mol : it.name === "Қўй лаҳм" ? meatCost.qoy : null;
+            it.name === "Мол лаҳм"
+              ? meatCost.mol
+              : it.name === "Қўй лаҳм"
+                ? meatCost.qoy
+                : it.name === "Товуқ гўшти"
+                  ? meatCost.tovuq
+                  : null;
           const valueGap =
             counted && diff !== 0 ? valuePortion(Math.abs(diff), it.unit, it.costPrice, carc) : null;
           const flag =
@@ -2798,7 +3066,11 @@ export const appRouter = router({
           if (!nonRevenue.has(r.orderId)) e.revenue += r.qty * r.price; // realized cash only
           byProduct.set(r.productId, e);
         }
-        const meatCost = { qoy: await latestMeatCost("qoy"), mol: await latestMeatCost("mol") };
+        const meatCost = {
+          qoy: await latestMeatCost("qoy"),
+          mol: await latestMeatCost("mol"),
+          tovuq: await latestMeatCost("tovuq"),
+        };
         const dishes = await computeDishTaannarx(meatCost);
         const meatPerUnit = new Map(
           dishes

@@ -5,6 +5,7 @@ import { BRAND } from "./brand";
 import { Catalog } from "./Catalog";
 import { Dashboard } from "./Dashboard";
 import { Hisobot } from "./Hisobot";
+import { Inventar } from "./Inventar";
 import { Inventarizatsiya } from "./Inventarizatsiya";
 import { Moliya } from "./Moliya";
 import { Obvalka } from "./Obvalka";
@@ -31,6 +32,7 @@ type Tab =
   | "harid"
   | "obvalka"
   | "inventarizatsiya"
+  | "assets"
   | "ombor"
   | "hisobot"
   | "taannarx"
@@ -74,6 +76,9 @@ export function Shell({
     ...(canObvalka ? [{ key: "obvalka" as Tab, label: "Обвалка" }] : []),
     ...(["director", "manager"].includes(user.role)
       ? [{ key: "inventarizatsiya" as Tab, label: "Инвентаризация" }]
+      : []),
+    ...(["director", "manager"].includes(user.role)
+      ? [{ key: "assets" as Tab, label: "Инвентарь" }]
       : []),
     ...(["director", "manager"].includes(user.role)
       ? [{ key: "ombor" as Tab, label: "Омбор" }]
@@ -129,10 +134,11 @@ export function Shell({
         {tab === "dashboard" && <Dashboard onGoObvalka={() => setTab("obvalka")} />}
         {tab === "analitika" && <Analitika />}
         {tab === "moliya" && <Moliya />}
-        {tab === "pos" && <Pos user={user} />}
+        {tab === "pos" && <Pos />}
         {tab === "harid" && <Purchases />}
         {tab === "obvalka" && <Obvalka />}
         {tab === "inventarizatsiya" && <Inventarizatsiya user={user} />}
+        {tab === "assets" && <Inventar />}
         {tab === "ombor" && <Ombor />}
         {tab === "hisobot" && <Hisobot />}
         {tab === "taannarx" && <Taannarx />}

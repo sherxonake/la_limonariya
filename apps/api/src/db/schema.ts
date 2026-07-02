@@ -122,7 +122,7 @@ export const recipeItems = pgTable("recipe_items", {
   sort: integer("sort").notNull().default(0),
 });
 
-export const carcassType = pgEnum("carcass_type", ["qoy", "mol"]);
+export const carcassType = pgEnum("carcass_type", ["qoy", "mol", "tovuq"]);
 
 export const partTypes = pgTable(
   "part_types",
@@ -261,6 +261,7 @@ export const paymentMethod = pgEnum("payment_method", [
   "card",
   "click",
   "payme",
+  "humo",
   "debt",
 ]);
 
@@ -345,6 +346,7 @@ export const expenseCategory = pgEnum("expense_category", [
   "elektr", // свет/электр
   "ish_haqi", // ойлик (зарплата)
   "jihoz", // жиҳоз/техника
+  "ega_oldi", // эга олди — OPEX эмас, тақсимот (P&L'дан ЧИҚАРИЛАДИ, financeForWindow'га қаранг)
   "boshqa", // прочее
 ]);
 
@@ -443,3 +445,60 @@ export const inventoryItems = pgTable(
   },
   (t) => [index("ii_count_idx").on(t.countId)],
 );
+
+// Инвентарь: идиш-товоқ/мебель/техника — food/COGS дунёсидан алоҳида.
+// Ҳозирги сон saqlanmaydi — ombor stock_movements каби, ledger'dan SUM орқали
+// ҳисобланади (счетчик drift bo'lmasligi uchun).
+export const assetCategory = pgEnum("asset_category", [
+  "idish",
+  "mebel",
+  "texnika",
+  "boshqa",
+]);
+
+export const assetMovementReason = pgEnum("asset_movement_reason", [
+  "kirim",
+  "sindi",
+  "yoqoldi",
+  "tuzatish",
+]);
+
+export const assets = pgTable(
+  "assets",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    category: assetCategory("category").notNull(),
+    name: text("name").notNull(),
+    note: text("note"),
+    // Дона нархи (so'm) — синган/йўқолганда айбдордан ундириладиган сумма
+    // учун. Ихтиёрий: реал нарх маълум бўлмагунча null, ёлғон рақам йўқ.
+    price: integer("price"),
+    active: boolean("active").notNull().default(true),
+    branchId: uuid("branch_id").references(() => branches.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [unique().on(t.category, t.name)],
+);
+
+export const assetMovements = pgTable("asset_movements", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  assetId: uuid("asset_id")
+    .notNull()
+    .references(() => assets.id, { onDelete: "cascade" }),
+  qty: integer("qty").notNull(),
+  reason: assetMovementReason("reason").notNull(),
+  note: text("note"),
+  // Дона нархининг shu воқеа пайтидаги snapshot'и (assets.price кейин
+  // ўзгарса ҳам, эски зарар суммаси ўзгармасин учун).
+  unitPrice: integer("unit_price"),
+  // sindi/yoqoldi'да aybdor xodim — tizimga kirgan director/manager'dan farqli
+  // (createdById), chunki odatda ofitsiant/kassir sindiradi, lekin ular emas
+  // director/manager yozadi.
+  responsibleId: uuid("responsible_id").references(() => users.id),
+  createdById: uuid("created_by_id").references(() => users.id),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+});
