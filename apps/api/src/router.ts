@@ -777,6 +777,123 @@ async function flushKitchenTicket(
   };
 }
 
+// Recipe-based stock write-off for an order's items — shared by pos.close
+// (moveType="sale_writeoff", full qty) and pos.cancel (moveType="loss",
+// qtyOverride = only the already-kitchen-sent portion per product — food
+// that was actually cooked/wasted, not the whole never-prepared order).
+async function computeOrderStockMoves(
+  exec: { select: typeof db.select },
+  orderId: string,
+  createdById: string,
+  moveType: "sale_writeoff" | "loss",
+  qtyOverride?: Map<string, number>,
+) {
+  const carc = await exec
+    .select({ id: products.id, name: products.name })
+    .from(products)
+    .where(inArray(products.name, ["Мол лаҳм", "Қўй лаҳм"]))
+    .orderBy(products.createdAt);
+  const molId = carc.find((c) => c.name === "Мол лаҳм")?.id ?? null;
+  const qoyId = carc.find((c) => c.name === "Қўй лаҳм")?.id ?? null;
+
+  // product type/unit lookup — only deduct stock-leaf, non-dona components (in grams)
+  const prodMap = new Map(
+    (
+      await exec
+        .select({ id: products.id, type: products.type, unit: products.unit })
+        .from(products)
+    ).map((p) => [p.id, p]),
+  );
+
+  const items = await exec
+    .select({
+      productId: orderItems.productId,
+      name: orderItems.name,
+      qty: orderItems.qty,
+      ptype: products.type,
+      punit: products.unit,
+      soldByWeight: products.soldByWeight,
+    })
+    .from(orderItems)
+    .leftJoin(products, eq(orderItems.productId, products.id))
+    .where(eq(orderItems.orderId, orderId));
+
+  const moves: (typeof stockMovements.$inferInsert)[] = [];
+  const skippedNames = new Set<string>();
+
+  for (const it of items) {
+    const qty = qtyOverride ? qtyOverride.get(it.productId ?? "") ?? 0 : it.qty;
+    if (qty <= 0) continue;
+    if (!it.productId) {
+      skippedNames.add(it.name);
+      continue;
+    }
+    if (it.ptype === "goods") {
+      // goods are sold per piece; only deduct dona-unit goods (native count)
+      if (it.punit === "dona")
+        moves.push({
+          productId: it.productId,
+          type: moveType,
+          qty: -qty,
+          unit: "dona",
+          refType: "order",
+          refId: orderId,
+          createdById,
+        });
+      else skippedNames.add(it.name);
+      continue;
+    }
+    if (it.soldByWeight) {
+      skippedNames.add(it.name);
+      continue;
+    }
+    const rec = (
+      await exec
+        .select({ id: recipes.id })
+        .from(recipes)
+        .where(eq(recipes.productId, it.productId))
+        .limit(1)
+    )[0];
+    if (!rec) {
+      skippedNames.add(it.name);
+      continue;
+    }
+    const ris = await exec.select().from(recipeItems).where(eq(recipeItems.recipeId, rec.id));
+    for (const ri of ris) {
+      if (ri.qtyG == null) continue;
+      const hint = ri.stockHint ?? "";
+      let target: string | null = null;
+      if (/обвалка|лаҳм/i.test(hint)) {
+        // carcass meat → grams against the 2 carcass products
+        target = /мол/i.test(hint)
+          ? molId
+          : /қўй|қуй|куй/i.test(hint)
+            ? qoyId
+            : null;
+      } else if (ri.componentId) {
+        // mapped ingredient: only a stock-leaf, weight-unit product (grams)
+        const c = prodMap.get(ri.componentId);
+        if (c && c.type !== "dish" && c.type !== "semi" && c.unit !== "dona")
+          target = ri.componentId;
+      }
+
+      if (target)
+        moves.push({
+          productId: target,
+          type: moveType,
+          qty: -(ri.qtyG * qty),
+          unit: "g",
+          refType: "order",
+          refId: orderId,
+          note: ri.componentName,
+          createdById,
+        });
+      else skippedNames.add(ri.componentName);
+    }
+  }
+  return { moves, skippedNames };
+}
+
 export const appRouter = router({
   health: publicProcedure.query(async () => {
     await db.execute(sql`select 1`);
@@ -1825,6 +1942,11 @@ export const appRouter = router({
               .limit(1)
           )[0];
           if (!head) throw new TRPCError({ code: "NOT_FOUND" });
+          if (head.status === "cancelled")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Бекор қилинган заказни ёпиб бўлмайди",
+            });
           if (head.status === "closed")
             return { ok: true, alreadyClosed: true, deducted: 0, skipped: 0 };
 
@@ -1872,114 +1994,12 @@ export const appRouter = router({
               .values(pays.map((p) => ({ orderId: input.id, ...p })));
 
           // Carcass meat balances (meat is tracked at carcass, not cut, level).
-          const carc = await tx
-            .select({ id: products.id, name: products.name })
-            .from(products)
-            .where(inArray(products.name, ["Мол лаҳм", "Қўй лаҳм"]))
-            .orderBy(products.createdAt);
-          const molId = carc.find((c) => c.name === "Мол лаҳм")?.id ?? null;
-          const qoyId = carc.find((c) => c.name === "Қўй лаҳм")?.id ?? null;
-
-          // product type/unit lookup — only deduct stock-leaf, non-dona components (in grams)
-          const prodMap = new Map(
-            (
-              await tx
-                .select({
-                  id: products.id,
-                  type: products.type,
-                  unit: products.unit,
-                })
-                .from(products)
-            ).map((p) => [p.id, p]),
+          const { moves, skippedNames } = await computeOrderStockMoves(
+            tx,
+            input.id,
+            ctx.user.id,
+            "sale_writeoff",
           );
-
-          const items = await tx
-            .select({
-              productId: orderItems.productId,
-              name: orderItems.name,
-              qty: orderItems.qty,
-              ptype: products.type,
-              punit: products.unit,
-              soldByWeight: products.soldByWeight,
-            })
-            .from(orderItems)
-            .leftJoin(products, eq(orderItems.productId, products.id))
-            .where(eq(orderItems.orderId, input.id));
-
-          const moves: (typeof stockMovements.$inferInsert)[] = [];
-          const skippedNames = new Set<string>();
-
-          for (const it of items) {
-            if (!it.productId) {
-              skippedNames.add(it.name);
-              continue;
-            }
-            if (it.ptype === "goods") {
-              // goods are sold per piece; only deduct dona-unit goods (native count)
-              if (it.punit === "dona")
-                moves.push({
-                  productId: it.productId,
-                  type: "sale_writeoff",
-                  qty: -it.qty,
-                  unit: "dona",
-                  refType: "order",
-                  refId: input.id,
-                  createdById: ctx.user.id,
-                });
-              else skippedNames.add(it.name);
-              continue;
-            }
-            if (it.soldByWeight) {
-              skippedNames.add(it.name);
-              continue;
-            }
-            const rec = (
-              await tx
-                .select({ id: recipes.id })
-                .from(recipes)
-                .where(eq(recipes.productId, it.productId))
-                .limit(1)
-            )[0];
-            if (!rec) {
-              skippedNames.add(it.name);
-              continue;
-            }
-            const ris = await tx
-              .select()
-              .from(recipeItems)
-              .where(eq(recipeItems.recipeId, rec.id));
-            for (const ri of ris) {
-              if (ri.qtyG == null) continue;
-              const hint = ri.stockHint ?? "";
-              let target: string | null = null;
-              if (/обвалка|лаҳм/i.test(hint)) {
-                // carcass meat → grams against the 2 carcass products
-                target = /мол/i.test(hint)
-                  ? molId
-                  : /қўй|қуй|куй/i.test(hint)
-                    ? qoyId
-                    : null;
-              } else if (ri.componentId) {
-                // mapped ingredient: only a stock-leaf, weight-unit product (grams)
-                const c = prodMap.get(ri.componentId);
-                if (c && c.type !== "dish" && c.type !== "semi" && c.unit !== "dona")
-                  target = ri.componentId;
-              }
-
-              if (target)
-                moves.push({
-                  productId: target,
-                  type: "sale_writeoff",
-                  qty: -(ri.qtyG * it.qty),
-                  unit: "g",
-                  refType: "order",
-                  refId: input.id,
-                  note: ri.componentName,
-                  createdById: ctx.user.id,
-                });
-              else skippedNames.add(ri.componentName);
-            }
-          }
 
           if (moves.length) await tx.insert(stockMovements).values(moves);
           return {
@@ -1988,6 +2008,95 @@ export const appRouter = router({
             skipped: skippedNames.size,
             skippedNames: [...skippedNames].slice(0, 12),
           };
+        });
+      }),
+
+    cancel: protectedProcedure
+      .input(z.object({ id: z.string().uuid(), note: z.string().optional() }))
+      .mutation(async ({ input, ctx }) => {
+        return db.transaction(async (tx) => {
+          const head = (
+            await tx
+              .select({ status: orders.status })
+              .from(orders)
+              .where(eq(orders.id, input.id))
+              .limit(1)
+          )[0];
+          if (!head) throw new TRPCError({ code: "NOT_FOUND" });
+          if (head.status !== "open")
+            throw new TRPCError({
+              code: "BAD_REQUEST",
+              message: "Фақат очиқ заказни бекор қилиш мумкин",
+            });
+
+          const items = await tx
+            .select({
+              productId: orderItems.productId,
+              name: orderItems.name,
+              createdAt: orderItems.createdAt,
+            })
+            .from(orderItems)
+            .where(eq(orderItems.orderId, input.id));
+
+          // "пишган-лекин-бекор" (№6): faqat kuxnyaga allaqachon yuborilgan
+          // (tayyorlangan/berilgan) miqdor yo'qotish sifatida yoziladi — hech
+          // yuborilmagan qatorlar uchun ombor tegilmaydi (hech narsa isrof
+          // bo'lmagan). sentQty hisobi computeUnsentItems bilan bir xil mantiq.
+          const sentByProduct = new Map<string, number>();
+          for (const it of items) {
+            if (!it.productId) continue;
+            const sentRow = (
+              await tx
+                .select({ s: sql<number>`coalesce(sum(${kitchenTicketItems.qty}), 0)` })
+                .from(kitchenTicketItems)
+                .innerJoin(kitchenTickets, eq(kitchenTicketItems.ticketId, kitchenTickets.id))
+                .where(
+                  and(
+                    eq(kitchenTickets.orderId, input.id),
+                    eq(kitchenTicketItems.productId, it.productId),
+                    gte(kitchenTickets.createdAt, it.createdAt),
+                  ),
+                )
+            )[0];
+            const sentQty = Number(sentRow?.s ?? 0);
+            if (sentQty > 0) sentByProduct.set(it.productId, sentQty);
+          }
+
+          if (sentByProduct.size > 0 && !["director", "manager"].includes(ctx.user.role))
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Пиширилган таомли заказни фақат директор/менежер бекор қила олади",
+            });
+
+          const { moves } = await computeOrderStockMoves(
+            tx,
+            input.id,
+            ctx.user.id,
+            "loss",
+            sentByProduct,
+          );
+          if (moves.length) await tx.insert(stockMovements).values(moves);
+
+          if (sentByProduct.size > 0) {
+            const byName = new Map(items.map((it) => [it.productId, it.name]));
+            await tx.insert(voidedItems).values(
+              [...sentByProduct.entries()].map(([productId, qty]) => ({
+                orderId: input.id,
+                productId,
+                name: byName.get(productId) ?? "?",
+                qty,
+                note: input.note ?? "буюртма бекор қилинди",
+                performedById: ctx.user.id,
+              })),
+            );
+          }
+
+          await tx
+            .update(orders)
+            .set({ status: "cancelled", closedAt: new Date(), closedById: ctx.user.id })
+            .where(eq(orders.id, input.id));
+
+          return { ok: true, lossItems: sentByProduct.size };
         });
       }),
   }),

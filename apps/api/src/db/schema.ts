@@ -179,7 +179,7 @@ export const tables = pgTable("tables", {
   active: boolean("active").notNull().default(true),
 });
 
-export const orderStatus = pgEnum("order_status", ["open", "closed"]);
+export const orderStatus = pgEnum("order_status", ["open", "closed", "cancelled"]);
 
 export const orders = pgTable(
   "orders",
