@@ -21,12 +21,22 @@ type RecentObvalka = {
   costPerKg: number;
   anomalies: number;
 };
+type RecentVoid = {
+  id: string;
+  orderId: string;
+  name: string;
+  qty: number;
+  note: string | null;
+  createdAt: string;
+  performedByName: string | null;
+};
 type Summary = {
   meatCost: { qoy: number | null; mol: number | null };
   catalog: Record<string, number>;
   recipeCount: number;
   recentObvalka: RecentObvalka[];
   thinDishes: ThinDish[];
+  recentVoids: RecentVoid[];
 };
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
@@ -106,6 +116,25 @@ export function Dashboard({ onGoObvalka }: { onGoObvalka: () => void }) {
           )}
         </Section>
       </div>
+
+      <Section title="🗑️ Ўчирилган таомлар" hint="пиширилгандан кейин камайтирилган — журнал">
+        {s.recentVoids.length === 0 ? (
+          <Empty>ҳали йўқ</Empty>
+        ) : (
+          <ul className="divide-y">
+            {s.recentVoids.map((v) => (
+              <li key={v.id} className="flex items-center justify-between px-4 py-2.5 text-sm">
+                <span>
+                  <span className="font-medium">{v.name}</span>{" "}
+                  <span className="text-zinc-400">×{v.qty} · {fmtDate(v.createdAt)}</span>
+                  {v.note && <span className="text-zinc-400"> · {v.note}</span>}
+                </span>
+                <span className="text-xs text-zinc-400">{v.performedByName ?? "—"}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Section>
     </div>
   );
 }

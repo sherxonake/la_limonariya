@@ -256,6 +256,28 @@ export const kitchenTicketItems = pgTable(
   (t) => [index("kti_ticket_idx").on(t.ticketId)],
 );
 
+// "Ўчирилган таом" journal: only written when addItem removes/reduces an item
+// that was already ticketed to the kitchen (already cooked/served) — a plain
+// pre-send edit never touches this table. Append-only, never edited.
+export const voidedItems = pgTable(
+  "voided_items",
+  {
+    id: uuid("id").primaryKey().defaultRandom(),
+    orderId: uuid("order_id")
+      .notNull()
+      .references(() => orders.id, { onDelete: "cascade" }),
+    productId: uuid("product_id").references(() => products.id),
+    name: text("name").notNull(),
+    qty: integer("qty").notNull(),
+    note: text("note"),
+    performedById: uuid("performed_by_id").references(() => users.id),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (t) => [index("vi_order_idx").on(t.orderId)],
+);
+
 export const paymentMethod = pgEnum("payment_method", [
   "cash",
   "card",

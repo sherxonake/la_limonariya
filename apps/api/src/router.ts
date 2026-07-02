@@ -37,6 +37,7 @@ import {
   tables,
   tillCounts,
   users,
+  voidedItems,
 } from "./db/schema";
 import { computeObvalka } from "./obvalka-calc";
 import { businessDayBounds, businessRangeBounds, previousDayKey } from "./time";
@@ -1442,7 +1443,22 @@ export const appRouter = router({
         .sort((a, b) => (b.meatPct ?? 0) - (a.meatPct ?? 0))
         .slice(0, 6);
 
-      return { meatCost, catalog, recipeCount, recentObvalka, thinDishes };
+      const recentVoids = await db
+        .select({
+          id: voidedItems.id,
+          orderId: voidedItems.orderId,
+          name: voidedItems.name,
+          qty: voidedItems.qty,
+          note: voidedItems.note,
+          createdAt: voidedItems.createdAt,
+          performedByName: users.name,
+        })
+        .from(voidedItems)
+        .leftJoin(users, eq(users.id, voidedItems.performedById))
+        .orderBy(desc(voidedItems.createdAt))
+        .limit(10);
+
+      return { meatCost, catalog, recipeCount, recentObvalka, thinDishes, recentVoids };
     }),
   }),
 
@@ -1622,7 +1638,7 @@ export const appRouter = router({
           delta: z.number().int(),
         }),
       )
-      .mutation(async ({ input }) => {
+      .mutation(async ({ input, ctx }) => {
         // Serialize concurrent adds of the SAME product to one order (rapid
         // double-taps) so they merge into one row instead of racing two inserts.
         return db.transaction(async (tx) => {
@@ -1643,6 +1659,40 @@ export const appRouter = router({
           )[0];
           if (existing) {
             const qty = existing.qty + input.delta;
+            if (input.delta < 0) {
+              // "Ўчирилган таом" гейти: агар бу камайтириш кухняга аллақачон
+              // юборилган (пиширилган/берилган) миқдорга тегса — director/
+              // manager рухсати ва журнал ёзуви шарт. Send'дан олдинги оддий
+              // таҳрир (waiter ҳали юбормаган) эркин, гейтланмайди.
+              const sentRow = (
+                await tx
+                  .select({ s: sql<number>`coalesce(sum(${kitchenTicketItems.qty}), 0)` })
+                  .from(kitchenTicketItems)
+                  .innerJoin(kitchenTickets, eq(kitchenTicketItems.ticketId, kitchenTickets.id))
+                  .where(
+                    and(
+                      eq(kitchenTickets.orderId, input.orderId),
+                      eq(kitchenTicketItems.productId, input.productId),
+                      gte(kitchenTickets.createdAt, existing.createdAt),
+                    ),
+                  )
+              )[0];
+              const sentQty = Number(sentRow?.s ?? 0);
+              if (qty < sentQty) {
+                if (!["director", "manager"].includes(ctx.user.role))
+                  throw new TRPCError({
+                    code: "FORBIDDEN",
+                    message: "Кухняга юборилган таомни фақат директор/менежер камайтира олади",
+                  });
+                await tx.insert(voidedItems).values({
+                  orderId: input.orderId,
+                  productId: input.productId,
+                  name: existing.name,
+                  qty: existing.qty - Math.max(qty, 0),
+                  performedById: ctx.user.id,
+                });
+              }
+            }
             if (qty <= 0)
               await tx.delete(orderItems).where(eq(orderItems.id, existing.id));
             else
@@ -1767,6 +1817,35 @@ export const appRouter = router({
             });
         }
         return db.transaction(async (tx) => {
+          const head = (
+            await tx
+              .select({ status: orders.status, servicePct: orders.servicePct })
+              .from(orders)
+              .where(eq(orders.id, input.id))
+              .limit(1)
+          )[0];
+          if (!head) throw new TRPCError({ code: "NOT_FOUND" });
+          if (head.status === "closed")
+            return { ok: true, alreadyClosed: true, deducted: 0, skipped: 0 };
+
+          // МАЖБУРИЙ: чек тўлов турисиз/нотўғри сумма билан ёпилмайди — тушум
+          // яширилмаслиги учун (comp'дан ташқари, унда pays.length=0 юқорида
+          // текширилган). Total клиентдан эмас, шу ерда, жойида ҳисобланади.
+          if (!input.comp) {
+            const items = await tx
+              .select({ price: orderItems.price, qty: orderItems.qty })
+              .from(orderItems)
+              .where(eq(orderItems.orderId, input.id));
+            const subtotal = items.reduce((s, i) => s + i.price * i.qty, 0);
+            const total = subtotal + Math.round((subtotal * head.servicePct) / 100);
+            const paid = pays.reduce((s, p) => s + p.amount, 0);
+            if (paid !== total)
+              throw new TRPCError({
+                code: "BAD_REQUEST",
+                message: `Тўлов суммаси (${paid}) чек жамига (${total}) тенг эмас.`,
+              });
+          }
+
           // Idempotent: only the tx that flips open→closed writes payments + списание.
           const flipped = await tx
             .update(orders)
