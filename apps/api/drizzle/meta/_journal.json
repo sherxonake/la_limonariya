@@ -124,36 +124,15 @@
     {
       "idx": 17,
       "version": "7",
-      "when": 1782909310113,
-      "tag": "0017_slow_star_brand",
+      "when": 1782899824037,
+      "tag": "0017_unusual_vermin",
       "breakpoints": true
     },
     {
       "idx": 18,
       "version": "7",
-      "when": 1782937196421,
-      "tag": "0018_handy_exiles",
-      "breakpoints": true
-    },
-    {
-      "idx": 19,
-      "version": "7",
-      "when": 1782938698186,
-      "tag": "0019_fearless_madrox",
-      "breakpoints": true
-    },
-    {
-      "idx": 20,
-      "version": "7",
-      "when": 1782939699161,
-      "tag": "0020_broad_master_chief",
-      "breakpoints": true
-    },
-    {
-      "idx": 21,
-      "version": "7",
-      "when": 1782993462994,
-      "tag": "0021_motionless_rhodey",
+      "when": 1783002120991,
+      "tag": "0018_humo_ega_oldi_tovuq_inventar",
       "breakpoints": true
     }
   ]

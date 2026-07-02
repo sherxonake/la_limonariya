@@ -1,1 +1,0 @@
-ALTER TYPE "public"."carcass_type" ADD VALUE 'tovuq';

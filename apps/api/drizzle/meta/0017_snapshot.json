@@ -1,5 +1,5 @@
 {
-  "id": "0b8ba81d-91f0-46c9-8da1-fd571bb63d16",
+  "id": "7b1c4878-9e20-4ab2-aa38-14aa786c02d4",
   "prevId": "dc768d38-ab97-4b7f-9fae-76dde7756b2e",
   "version": "7",
   "dialect": "postgresql",
@@ -1184,6 +1184,18 @@
           "type": "text",
           "primaryKey": false,
           "notNull": false
+        },
+        "guests": {
+          "name": "guests",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "note": {
+          "name": "note",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         }
       },
       "indexes": {
@@ -2079,6 +2091,66 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.tables": {
+      "name": "tables",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "hall_id": {
+          "name": "hall_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "sort": {
+          "name": "sort",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "active": {
+          "name": "active",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": true
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "tables_hall_id_halls_id_fk": {
+          "name": "tables_hall_id_halls_id_fk",
+          "tableFrom": "tables",
+          "tableTo": "halls",
+          "columnsFrom": [
+            "hall_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.till_counts": {
       "name": "till_counts",
       "schema": "",
@@ -2243,7 +2315,6 @@
         "elektr",
         "ish_haqi",
         "jihoz",
-        "ega_oldi",
         "boshqa"
       ]
     },
@@ -2285,7 +2356,6 @@
         "card",
         "click",
         "payme",
-        "humo",
         "debt"
       ]
     },

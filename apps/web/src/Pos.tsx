@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from "react";
+import { type ReactNode, useCallback, useEffect, useState } from "react";
 import { BRAND } from "./brand";
 import { trpc } from "./trpc";
 
 type Hall = { id: string; name: string; servicePct: number };
+type Table = { id: string; hallId: string; name: string; sort: number };
 type MenuItem = {
   id: string;
   name: string;
@@ -12,10 +13,13 @@ type MenuItem = {
 type OpenOrder = {
   id: string;
   tableNo: string | null;
+  hallId: string;
+  guests: number | null;
   hall: string | null;
   waiter: string | null;
   qty: number;
   total: number;
+  createdAt: string;
 };
 type PayMethod = "cash" | "card" | "click" | "payme" | "humo" | "debt";
 type Order = {
@@ -26,6 +30,8 @@ type Order = {
   servicePct: number;
   hall: string | null;
   waiter: string | null;
+  guests: number | null;
+  note: string | null;
   createdAt: string;
   isComp: boolean;
   compReason: string | null;
@@ -53,133 +59,361 @@ const PAY_LABEL: Record<string, string> = {
 
 const fmt = (n: number) => n.toLocaleString("ru-RU");
 
+// Category colour-coding — fast visual scanning (Clopos has none).
+const CAT_COLORS: [RegExp, string][] = [
+  [/шашлик/i, "#c1502e"],
+  [/салат/i, "#3f7d4e"],
+  [/балик|балиқ|рыб/i, "#2f6f8f"],
+  [/спиртли|алко|пиво/i, "#7b3f6f"],
+  [/ичимлик|напит/i, "#2a9d9d"],
+  [/ширин|десерт|сладк/i, "#c8577e"],
+  [/морожен/i, "#5b8fd6"],
+  [/choy|чой|чай|non/i, "#b07b3e"],
+  [/таом|блюд|горяч|ош/i, "#0e7c5a"],
+];
+const PALETTE = ["#0e4037", "#c1502e", "#2f6f8f", "#7b3f6f", "#3f7d4e", "#b07b3e", "#2a9d9d", "#c8577e"];
+function catColor(name?: string | null): string {
+  if (!name) return "#9a9a9a";
+  for (const [re, c] of CAT_COLORS) if (re.test(name)) return c;
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return PALETTE[h % PALETTE.length] ?? "#0e4037";
+}
+
+function minsAgo(iso: string): string {
+  const m = Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 60000));
+  if (m < 60) return `${m}м`;
+  return `${Math.floor(m / 60)}с ${m % 60}м`;
+}
+
+function Svg({ children, className }: { children: ReactNode; className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={1.75}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      {children}
+    </svg>
+  );
+}
+type IP = { className?: string };
+const IPlus = (p: IP) => <Svg {...p}><path d="M12 5v14M5 12h14" /></Svg>;
+const IMinus = (p: IP) => <Svg {...p}><path d="M5 12h14" /></Svg>;
+const IBack = (p: IP) => <Svg {...p}><path d="M15 18l-6-6 6-6" /></Svg>;
+const ISearch = (p: IP) => <Svg {...p}><circle cx="11" cy="11" r="7" /><path d="M21 21l-3.5-3.5" /></Svg>;
+const IFlame = (p: IP) => <Svg {...p}><path d="M12 3s4 3.5 4 8a4 4 0 1 1-8 0c0-1.6.8-2.8 1.6-3.6C10 8.7 12 7 12 3z" /><path d="M12 21a2.4 2.4 0 0 0 2.4-2.4c0-1.6-2.4-3-2.4-3s-2.4 1.4-2.4 3A2.4 2.4 0 0 0 12 21z" /></Svg>;
+const IPrinter = (p: IP) => <Svg {...p}><path d="M6 9V3h12v6M6 18H4a2 2 0 0 1-2-2v-4a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v4a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="7" rx="1" /></Svg>;
+const IChevron = (p: IP) => <Svg {...p}><path d="M6 9l6 6 6-6" /></Svg>;
+const IUser = (p: IP) => <Svg {...p}><circle cx="12" cy="8" r="3.5" /><path d="M5 20c0-3.6 3.1-5.5 7-5.5s7 1.9 7 5.5" /></Svg>;
+const IUsers = (p: IP) => <Svg {...p}><circle cx="9" cy="8" r="3" /><path d="M2.5 20c0-3.3 2.8-5 6.5-5s6.5 1.7 6.5 5" /><path d="M16 5.2A3 3 0 0 1 16 11M21.5 20c0-2.6-1.6-4.2-4-4.8" /></Svg>;
+const IBank = (p: IP) => <Svg {...p}><rect x="2" y="6" width="20" height="12" rx="2" /><circle cx="12" cy="12" r="2.5" /></Svg>;
+const ICard = (p: IP) => <Svg {...p}><rect x="2" y="5" width="20" height="14" rx="2" /><path d="M2 10h20" /></Svg>;
+const IReceipt = (p: IP) => <Svg {...p}><path d="M5 3v18l2-1.2L9 21l2-1.2L13 21l2-1.2L17 21l2-1.2V3l-2 1.2L15 3l-2 1.2L11 3 9 4.2 7 3z" /><path d="M8 9h8M8 13h6" /></Svg>;
+const IPlate = (p: IP) => <Svg {...p}><circle cx="12" cy="12" r="8.5" /><circle cx="12" cy="12" r="3.5" /></Svg>;
+const IClock = (p: IP) => <Svg {...p}><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></Svg>;
+const IPencil = (p: IP) => <Svg {...p}><path d="M4 20h4L18.5 9.5a2.1 2.1 0 0 0-3-3L5 17v3z" /><path d="M13.5 6.5l3 3" /></Svg>;
+
+function Spin() {
+  return (
+    <div className="grid place-items-center py-16">
+      <span className="h-6 w-6 animate-spin rounded-full border-2 border-brand-cream-soft border-t-brand" />
+    </div>
+  );
+}
+
 export function Pos() {
   const [orderId, setOrderId] = useState<string | null>(null);
   if (orderId)
     return <OrderView id={orderId} onBack={() => setOrderId(null)} />;
-  return <OrderList onOpen={setOrderId} onNew={setOrderId} />;
+  return <FloorView onOpen={setOrderId} onNew={setOrderId} />;
 }
 
-function OrderList({
+// ── FLOOR: visual hall/table map (Clopos only has a flat list) ──────────────
+function FloorView({
   onOpen,
   onNew,
 }: {
   onOpen: (id: string) => void;
   onNew: (id: string) => void;
 }) {
-  const [orders, setOrders] = useState<OpenOrder[] | null>(null);
   const [halls, setHalls] = useState<Hall[]>([]);
-  const [creating, setCreating] = useState(false);
+  const [tbls, setTbls] = useState<Table[]>([]);
+  const [orders, setOrders] = useState<OpenOrder[] | null>(null);
+  const [newFor, setNewFor] = useState<{ hall: Hall; table?: string } | null>(null);
 
-  useEffect(() => {
+  const refresh = useCallback(() => {
     trpc.pos.openOrders.query().then(setOrders).catch(() => setOrders([]));
-    trpc.pos.halls.query().then(setHalls).catch(() => {});
   }, []);
+  useEffect(() => {
+    trpc.pos.halls.query().then(setHalls).catch(() => {});
+    trpc.pos.tables.query().then(setTbls).catch(() => {});
+    refresh();
+  }, [refresh]);
 
-  async function create(hallId: string, tableNo: string) {
+  async function create(hallId: string, table: string | undefined, guests: number) {
     const { id } = await trpc.pos.create.mutate({
       hallId,
-      tableNo: tableNo || undefined,
+      tableNo: table || undefined,
+      guests,
     });
     onNew(id);
   }
 
+  const key = (hallId: string, name: string | null) => `${hallId}::${name ?? ""}`;
+  const openByKey = new Map<string, OpenOrder>();
+  for (const o of orders ?? []) if (!openByKey.has(key(o.hallId, o.tableNo))) openByKey.set(key(o.hallId, o.tableNo), o);
+  const tableKeys = new Set(tbls.map((t) => key(t.hallId, t.name)));
+  const stray = (orders ?? []).filter((o) => !tableKeys.has(key(o.hallId, o.tableNo)));
+  const busy = orders?.length ?? 0;
+
   return (
-    <div className="space-y-4">
-      <button
-        onClick={() => setCreating((v) => !v)}
-        className="w-full rounded-xl bg-brand py-3 font-medium text-white"
-      >
-        ＋ Янги заказ
-      </button>
-
-      {creating && <NewOrder halls={halls} onCreate={create} />}
-
-      <div>
-        <h2 className="mb-2 text-sm font-semibold text-zinc-500">
-          Очиқ заказлар ({orders?.length ?? "…"})
-        </h2>
-        {orders && orders.length === 0 ? (
-          <div className="rounded-xl border bg-white p-8 text-center text-zinc-400">
-            Очиқ заказ йўқ
-          </div>
-        ) : (
-          <div className="grid gap-2 sm:grid-cols-2">
-            {orders?.map((o) => (
-              <button
-                key={o.id}
-                onClick={() => onOpen(o.id)}
-                className="flex items-center justify-between rounded-xl border bg-white px-4 py-3 text-left hover:border-brand"
-              >
-                <span>
-                  <span className="font-medium">{o.hall}</span>
-                  {o.tableNo && (
-                    <span className="text-zinc-400"> · стол {o.tableNo}</span>
-                  )}
-                  <div className="text-xs text-zinc-400">
-                    {o.waiter} · {o.qty} таом
-                  </div>
-                </span>
-                <span className="font-semibold tabular-nums">{fmt(o.total)}</span>
-              </button>
-            ))}
-          </div>
-        )}
+    <div className="space-y-5">
+      <div className="flex items-center justify-between gap-3">
+        <div>
+          <h2 className="text-lg font-bold text-brand-ink">Заллар</h2>
+          <p className="text-xs text-zinc-400">
+            {orders === null ? "…" : `${busy} банд · ${tbls.length} стол`}
+          </p>
+        </div>
+        <button
+          onClick={() => halls[0] && setNewFor({ hall: halls[0] })}
+          className="inline-flex items-center gap-2 rounded-xl bg-brand px-4 py-2.5 text-sm font-semibold text-white shadow-sm transition hover:bg-brand-deep active:scale-[.98] motion-reduce:active:scale-100"
+        >
+          <IPlus className="h-4 w-4" />
+          Тезкор заказ
+        </button>
       </div>
+
+      {orders === null ? (
+        <Spin />
+      ) : (
+        <>
+          {halls.map((h) => {
+            const hallTables = tbls.filter((t) => t.hallId === h.id);
+            const hallBusy = hallTables.filter((t) => openByKey.has(key(h.id, t.name))).length;
+            return (
+              <section key={h.id} className="space-y-2.5">
+                <div className="flex items-center gap-2 px-1">
+                  <h3 className="text-sm font-bold uppercase tracking-wide text-brand-ink">{h.name}</h3>
+                  {h.servicePct > 0 && (
+                    <span className="rounded-full bg-brand-cream px-2 py-0.5 text-[10px] font-semibold text-brand">
+                      +{h.servicePct}%
+                    </span>
+                  )}
+                  <span className="ml-auto text-xs text-zinc-400">
+                    {hallBusy}/{hallTables.length}
+                  </span>
+                </div>
+                <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                  {hallTables.map((t) => {
+                    const o = openByKey.get(key(h.id, t.name));
+                    return o ? (
+                      <TableTile key={t.id} table={t.name} order={o} onClick={() => onOpen(o.id)} />
+                    ) : (
+                      <button
+                        key={t.id}
+                        onClick={() => setNewFor({ hall: h, table: t.name })}
+                        className="grid min-h-[76px] place-items-center rounded-xl border border-brand-cream-soft bg-white px-2 py-2 text-center text-xs font-medium leading-tight text-brand-ink/70 shadow-sm transition hover:border-brand hover:text-brand active:scale-95 motion-reduce:active:scale-100"
+                      >
+                        <span className="line-clamp-2">{t.name}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            );
+          })}
+
+          {stray.length > 0 && (
+            <section className="space-y-2.5">
+              <h3 className="px-1 text-sm font-bold uppercase tracking-wide text-brand-ink">Бошқа очиқ</h3>
+              <div className="grid grid-cols-3 gap-2 sm:grid-cols-4 lg:grid-cols-6">
+                {stray.map((o) => (
+                  <TableTile
+                    key={o.id}
+                    table={o.tableNo || o.hall || "заказ"}
+                    order={o}
+                    onClick={() => onOpen(o.id)}
+                  />
+                ))}
+              </div>
+            </section>
+          )}
+        </>
+      )}
+
+      {newFor && (
+        <NewOrderSheet
+          halls={halls}
+          preset={newFor}
+          onClose={() => setNewFor(null)}
+          onCreate={create}
+        />
+      )}
     </div>
   );
 }
 
-function NewOrder({
+function TableTile({
+  table,
+  order,
+  onClick,
+}: {
+  table: string;
+  order: OpenOrder;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      onClick={onClick}
+      className="flex min-h-[76px] flex-col justify-between rounded-xl bg-brand p-2.5 text-left text-white shadow-sm transition hover:bg-brand-deep active:scale-95 motion-reduce:active:scale-100"
+    >
+      <div className="flex items-start justify-between gap-1">
+        <span className="line-clamp-2 text-xs font-semibold leading-tight">{table}</span>
+        {order.guests ? (
+          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-white/15 px-1 text-[10px] font-semibold">
+            <IUser className="h-3 w-3" />
+            {order.guests}
+          </span>
+        ) : null}
+      </div>
+      <div>
+        <div className="text-sm font-bold tabular-nums text-brand-gold">{fmt(order.total)}</div>
+        <div className="flex items-center gap-1 text-[10px] text-white/60">
+          <IClock className="h-3 w-3" />
+          {minsAgo(order.createdAt)}
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function NewOrderSheet({
   halls,
+  preset,
+  onClose,
   onCreate,
 }: {
   halls: Hall[];
-  onCreate: (hallId: string, tableNo: string) => void;
+  preset: { hall: Hall; table?: string };
+  onClose: () => void;
+  onCreate: (hallId: string, table: string | undefined, guests: number) => void;
 }) {
-  const [hallId, setHallId] = useState<string | null>(null);
-  const [table, setTable] = useState("");
+  const [hallId, setHallId] = useState(preset.hall.id);
+  const [table, setTable] = useState(preset.table ?? "");
+  const [guests, setGuests] = useState(2);
+  const [busy, setBusy] = useState(false);
+  const fixedTable = preset.table !== undefined;
+
+  async function go() {
+    setBusy(true);
+    try {
+      onCreate(hallId, table || undefined, guests);
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
-    <div className="space-y-3 rounded-xl border bg-white p-4">
-      <div className="flex flex-wrap gap-2">
-        {halls.map((h) => (
+    <div
+      className="fixed inset-0 z-30 flex items-end justify-center bg-brand-ink/40 backdrop-blur-sm sm:items-center sm:p-4"
+      onClick={onClose}
+    >
+      <div
+        className="w-full max-w-sm space-y-4 rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl"
+        style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div>
+          <h3 className="text-lg font-bold text-brand-ink">
+            {fixedTable ? preset.table : "Янги заказ"}
+          </h3>
+          <p className="text-xs text-zinc-400">{preset.hall.name}</p>
+        </div>
+
+        {!fixedTable && (
+          <>
+            <div className="flex flex-wrap gap-1.5">
+              {halls.map((h) => (
+                <button
+                  key={h.id}
+                  onClick={() => setHallId(h.id)}
+                  className={`rounded-lg px-3 py-1.5 text-sm font-medium transition ${
+                    hallId === h.id ? "bg-brand text-white" : "bg-brand-cream text-brand hover:bg-brand-cream-soft"
+                  }`}
+                >
+                  {h.name}
+                </button>
+              ))}
+            </div>
+            <input
+              value={table}
+              onChange={(e) => setTable(e.target.value)}
+              placeholder="Стол № (ихтиёрий)"
+              className="w-full rounded-xl border border-brand-cream-soft px-3 py-2.5 text-sm outline-none focus:border-brand"
+            />
+          </>
+        )}
+
+        <div>
+          <p className="mb-1.5 text-xs font-semibold text-zinc-500">Меҳмонлар сони</p>
+          <div className="flex items-center gap-3">
+            <Step onClick={() => setGuests((g) => Math.max(1, g - 1))}>
+              <IMinus className="h-4 w-4" />
+            </Step>
+            <span className="inline-flex items-center gap-1.5 text-2xl font-bold tabular-nums text-brand-ink">
+              <IUsers className="h-5 w-5 text-brand" />
+              {guests}
+            </span>
+            <Step onClick={() => setGuests((g) => Math.min(99, g + 1))}>
+              <IPlus className="h-4 w-4" />
+            </Step>
+            <div className="ml-auto flex gap-1">
+              {[2, 4, 6].map((n) => (
+                <button
+                  key={n}
+                  onClick={() => setGuests(n)}
+                  className={`h-9 w-9 rounded-lg text-sm font-semibold transition ${
+                    guests === n ? "bg-brand text-white" : "bg-brand-cream text-brand hover:bg-brand-cream-soft"
+                  }`}
+                >
+                  {n}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
           <button
-            key={h.id}
-            onClick={() => setHallId(h.id)}
-            className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
-              hallId === h.id
-                ? "bg-zinc-900 text-white"
-                : "bg-zinc-100 text-zinc-600"
-            }`}
+            onClick={onClose}
+            className="flex-1 rounded-xl border border-brand-cream-soft py-3 text-sm font-medium text-zinc-600"
           >
-            {h.name}{" "}
-            <span className="text-xs opacity-60">{h.servicePct}%</span>
+            Бекор
           </button>
-        ))}
-      </div>
-      <div className="flex gap-2">
-        <input
-          value={table}
-          onChange={(e) => setTable(e.target.value)}
-          placeholder="Стол №"
-          className="w-28 rounded-lg border px-3 py-2 text-sm outline-none focus:border-brand"
-        />
-        <button
-          onClick={() => hallId && onCreate(hallId, table)}
-          disabled={!hallId}
-          className="flex-1 rounded-lg bg-brand py-2 text-sm font-medium text-white disabled:opacity-40"
-        >
-          Очиш
-        </button>
+          <button
+            onClick={go}
+            disabled={busy}
+            className="flex-[2] rounded-xl bg-brand py-3 text-sm font-semibold text-white transition hover:bg-brand-deep disabled:opacity-50"
+          >
+            Очиш ва таом қўшиш
+          </button>
+        </div>
       </div>
     </div>
   );
 }
 
+// ── ORDER SCREEN ────────────────────────────────────────────────────────────
 function OrderView({ id, onBack }: { id: string; onBack: () => void }) {
   const [order, setOrder] = useState<Order | null>(null);
   const [menu, setMenu] = useState<MenuItem[]>([]);
-  const [picking, setPicking] = useState(false);
   const [paying, setPaying] = useState(false);
   const [closing, setClosing] = useState(false);
   const [closeErr, setCloseErr] = useState<string | null>(null);
@@ -190,9 +424,14 @@ function OrderView({ id, onBack }: { id: string; onBack: () => void }) {
   const [sending, setSending] = useState(false);
   const [tickets, setTickets] = useState<{ id: string; createdAt: string; itemCount: number }[]>([]);
   const [showTickets, setShowTickets] = useState(false);
+  const [note, setNote] = useState("");
+  const [noteOpen, setNoteOpen] = useState(false);
 
   const refresh = useCallback(() => {
-    trpc.pos.order.query({ id }).then(setOrder).catch(() => {});
+    trpc.pos.order.query({ id }).then((o) => {
+      setOrder(o);
+      setNote(o.note ?? "");
+    }).catch(() => {});
     trpc.pos.unsentCount.query({ orderId: id }).then((r) => setUnsent(r.unsent)).catch(() => {});
     trpc.pos.ticketsForOrder.query({ orderId: id }).then(setTickets).catch(() => {});
   }, [id]);
@@ -207,6 +446,15 @@ function OrderView({ id, onBack }: { id: string; onBack: () => void }) {
     refresh();
   }
 
+  async function setGuests(n: number) {
+    await trpc.pos.updateMeta.mutate({ id, guests: Math.max(0, n) }).catch(() => {});
+    refresh();
+  }
+
+  async function saveNote() {
+    await trpc.pos.updateMeta.mutate({ id, note }).catch(() => {});
+  }
+
   async function sendToKitchen() {
     setSending(true);
     try {
@@ -218,16 +466,12 @@ function OrderView({ id, onBack }: { id: string; onBack: () => void }) {
     }
   }
 
-  if (ticketId) return <KitchenTicketView ticketId={ticketId} onBack={() => setTicketId(null)} />;
   async function pay(method: PayMethod) {
     if (!order || closing) return;
     setCloseErr(null);
     setClosing(true);
     try {
-      await trpc.pos.close.mutate({
-        id,
-        payments: [{ method, amount: order.total }],
-      });
+      await trpc.pos.close.mutate({ id, payments: [{ method, amount: order.total }] });
       setPaying(false);
       refresh();
     } catch (e: unknown) {
@@ -237,206 +481,385 @@ function OrderView({ id, onBack }: { id: string; onBack: () => void }) {
     }
   }
 
-  if (!order) return <div className="p-6 text-center text-zinc-400">⏳</div>;
-  if (order.status === "closed")
-    return <Chek order={order} onBack={onBack} />;
+  if (ticketId) return <KitchenTicketView ticketId={ticketId} onBack={() => setTicketId(null)} />;
+  if (!order) return <Spin />;
+  if (order.status === "closed") return <Chek order={order} onBack={onBack} />;
+
   const menuCats = [...new Set(menu.map((m) => m.category).filter((c): c is string => !!c))];
   const filtered = menu
     .filter((m) => !menuCat || m.category === menuCat)
     .filter((m) => !q || m.name.toLowerCase().includes(q.toLowerCase()));
+  const shown = filtered.slice(0, 120);
+  const itemCount = order.items.reduce((s, it) => s + it.qty, 0);
+  const empty = order.items.length === 0;
+
+  function cancelPay() {
+    setPaying(false);
+    setCloseErr(null);
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <button onClick={onBack} className="text-sm text-zinc-500 hover:text-zinc-900">
-          ← Заказлар
+    <div className="space-y-3 pb-24 lg:pb-0">
+      <div className="flex items-center justify-between gap-3">
+        <button
+          onClick={onBack}
+          className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-white hover:text-brand"
+        >
+          <IBack className="h-4 w-4" />
+          Заллар
         </button>
-        <span className="text-sm">
-          <b>{order.hall}</b>
-          {order.tableNo && ` · стол ${order.tableNo}`}
-        </span>
-      </div>
-
-      <div className="overflow-hidden rounded-xl border bg-white">
-        {order.items.length === 0 ? (
-          <div className="px-4 py-6 text-center text-sm text-zinc-400">
-            Таом қўшинг
-          </div>
-        ) : (
-          <div className="divide-y">
-            {order.items.map((it) => (
-              <div key={it.id} className="flex items-center justify-between gap-3 px-4 py-2.5">
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm">{it.name}</div>
-                  <div className="text-xs text-zinc-400 tabular-nums">{fmt(it.price)}</div>
-                </div>
-                {it.productId ? (
-                  <div className="flex shrink-0 items-center gap-1.5">
-                    <Step onClick={() => add(it.productId!, -1)}>−</Step>
-                    <span className="w-6 text-center tabular-nums">{it.qty}</span>
-                    <Step onClick={() => add(it.productId!, 1)}>＋</Step>
-                  </div>
-                ) : (
-                  <span className="shrink-0 tabular-nums text-zinc-500">×{it.qty}</span>
-                )}
-                <span className="w-20 shrink-0 text-right font-medium tabular-nums">
-                  {fmt(it.price * it.qty)}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-        <div className="space-y-1 border-t bg-zinc-50 px-4 py-3 text-sm">
-          <Row label="Оралиқ сумма" value={fmt(order.subtotal)} />
-          <Row
-            label={`Хизмат ҳақи (${order.servicePct}%)`}
-            value={fmt(order.service)}
-            muted
-          />
-          <Row label="ЖАМИ" value={`${fmt(order.total)} so'm`} big />
+        <div className="flex flex-wrap items-center justify-end gap-1.5">
+          <span className="rounded-lg bg-brand px-3 py-1.5 text-sm font-semibold text-white">
+            {order.hall ?? "Зал"}
+          </span>
+          {order.tableNo && (
+            <span className="rounded-lg bg-brand-cream px-3 py-1.5 text-sm font-semibold text-brand">
+              {order.tableNo}
+            </span>
+          )}
         </div>
       </div>
 
-      {!paying && unsent > 0 && (
+      {/* meta: guests + note */}
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="inline-flex items-center gap-1 rounded-xl border border-brand-cream-soft bg-white px-1.5 py-1 shadow-sm">
+          <IUsers className="mx-1 h-4 w-4 text-brand" />
+          <button
+            onClick={() => setGuests((order.guests ?? 0) - 1)}
+            className="grid h-7 w-7 place-items-center rounded-lg text-brand transition hover:bg-brand-cream active:scale-90 motion-reduce:active:scale-100"
+          >
+            <IMinus className="h-3.5 w-3.5" />
+          </button>
+          <span className="w-6 text-center text-sm font-bold tabular-nums text-brand-ink">
+            {order.guests ?? "—"}
+          </span>
+          <button
+            onClick={() => setGuests((order.guests ?? 0) + 1)}
+            className="grid h-7 w-7 place-items-center rounded-lg text-brand transition hover:bg-brand-cream active:scale-90 motion-reduce:active:scale-100"
+          >
+            <IPlus className="h-3.5 w-3.5" />
+          </button>
+        </div>
         <button
-          onClick={sendToKitchen}
-          disabled={sending}
-          className="w-full rounded-xl bg-amber-500 py-3 font-medium text-white disabled:opacity-50"
+          onClick={() => setNoteOpen((v) => !v)}
+          className={`inline-flex items-center gap-1.5 rounded-xl border px-3 py-2 text-sm shadow-sm transition ${
+            note ? "border-brand-gold/50 bg-brand-gold/10 text-brand-gold-deep" : "border-brand-cream-soft bg-white text-zinc-500 hover:text-brand"
+          }`}
         >
-          🍳 Кухняга юбориш ({unsent} та янги)
+          <IPencil className="h-4 w-4" />
+          <span className="max-w-[9rem] truncate">{note || "Изоҳ"}</span>
         </button>
+      </div>
+      {noteOpen && (
+        <input
+          autoFocus
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onBlur={() => {
+            saveNote();
+            setNoteOpen(false);
+          }}
+          onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
+          placeholder="Изоҳ — масалан: аччиқ эмас, музсиз..."
+          className="w-full rounded-xl border border-brand-cream-soft px-3 py-2.5 text-sm outline-none focus:border-brand"
+        />
       )}
 
-      {tickets.length > 0 && (
-        <div className="rounded-xl border bg-white">
-          <button
-            onClick={() => setShowTickets((v) => !v)}
-            className="flex w-full items-center justify-between px-4 py-2.5 text-sm text-zinc-500"
-          >
-            <span>🧾 Тикетлар тарихи ({tickets.length})</span>
-            <span>{showTickets ? "▲" : "▼"}</span>
-          </button>
-          {showTickets && (
-            <div className="divide-y border-t">
-              {tickets.map((t) => {
-                const d = new Date(t.createdAt);
-                const p = (n: number) => String(n).padStart(2, "0");
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_20rem] lg:items-start">
+        {/* MENU */}
+        <section className="order-1 min-w-0 space-y-3">
+          <div className="flex items-center gap-2 rounded-2xl border border-brand-cream-soft bg-white px-3.5 py-2.5 shadow-sm">
+            <ISearch className="h-4 w-4 shrink-0 text-zinc-400" />
+            <input
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              placeholder="Таом қидириш..."
+              className="w-full bg-transparent text-sm outline-none placeholder:text-zinc-400"
+            />
+          </div>
+          <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap pb-1">
+            <button
+              onClick={() => setMenuCat(null)}
+              className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                menuCat === null ? "bg-brand text-white" : "bg-brand-cream text-brand hover:bg-brand-cream-soft"
+              }`}
+            >
+              Барчаси
+            </button>
+            {menuCats.map((c) => {
+              const color = catColor(c);
+              const on = menuCat === c;
+              return (
+                <button
+                  key={c}
+                  onClick={() => setMenuCat(c)}
+                  style={on ? { backgroundColor: color } : { color }}
+                  className={`inline-flex shrink-0 items-center gap-1.5 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+                    on ? "text-white" : "bg-brand-cream hover:bg-brand-cream-soft"
+                  }`}
+                >
+                  {!on && <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />}
+                  {c}
+                </button>
+              );
+            })}
+          </div>
+          {shown.length === 0 ? (
+            <div className="rounded-2xl border border-dashed border-brand-cream-soft bg-white/60 px-4 py-10 text-center text-sm text-zinc-400">
+              топилмади
+            </div>
+          ) : (
+            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+              {shown.map((m) => {
+                const color = catColor(m.category);
                 return (
                   <button
-                    key={t.id}
-                    onClick={() => setTicketId(t.id)}
-                    className="flex w-full items-center justify-between px-4 py-2 text-left text-sm hover:bg-zinc-50"
+                    key={m.id}
+                    onClick={() => add(m.id, 1)}
+                    style={{ borderLeftColor: color }}
+                    className="group flex h-full flex-col justify-between gap-2 rounded-xl border border-l-4 border-brand-cream-soft bg-white p-3 text-left shadow-sm transition hover:border-brand hover:shadow-md active:scale-95 motion-reduce:active:scale-100"
                   >
-                    <span className="text-zinc-500">
-                      {p(d.getHours())}:{p(d.getMinutes())}
+                    <span className="line-clamp-2 text-sm font-medium leading-snug text-brand-ink">
+                      {m.name}
                     </span>
-                    <span className="tabular-nums text-zinc-400">{t.itemCount} дона</span>
+                    <span className="flex items-center justify-between">
+                      <span className="text-sm font-bold tabular-nums text-brand">{fmt(m.price)}</span>
+                      <span className="grid h-6 w-6 place-items-center rounded-full bg-brand-cream text-brand transition group-hover:bg-brand group-hover:text-white">
+                        <IPlus className="h-3.5 w-3.5" />
+                      </span>
+                    </span>
                   </button>
                 );
               })}
             </div>
           )}
-        </div>
-      )}
+          {filtered.length > shown.length && (
+            <p className="text-center text-xs text-zinc-400">
+              яна {filtered.length - shown.length} та — қидирувдан фойдаланинг
+            </p>
+          )}
+        </section>
 
-      {paying ? (
-        <div className="space-y-3 rounded-xl border bg-white p-4">
-          <p className="text-sm text-zinc-500">
-            Тўлов усули — <b className="text-zinc-900">{fmt(order.total)} so'm</b>
-          </p>
-          <div className="grid grid-cols-3 gap-2">
-            {(["cash", "card", "click", "payme", "humo", "debt"] as PayMethod[]).map(
-              (m) => (
-                <button
-                  key={m}
-                  onClick={() => pay(m)}
-                  disabled={closing}
-                  className="rounded-lg bg-zinc-100 py-2.5 text-sm font-medium hover:bg-brand-cream disabled:opacity-40"
-                >
-                  {PAY_LABEL[m]}
-                </button>
-              ),
-            )}
-          </div>
-          {closeErr && <p className="text-sm text-red-500">{closeErr}</p>}
-          <button
-            onClick={() => {
-              setPaying(false);
-              setCloseErr(null);
-            }}
-            disabled={closing}
-            className="w-full py-1 text-xs text-zinc-400 disabled:opacity-40"
-          >
-            Бекор
-          </button>
-        </div>
-      ) : (
-        <>
-          <button
-            onClick={() => setPicking((v) => !v)}
-            className="w-full rounded-xl border border-dashed border-zinc-300 py-2.5 text-sm font-medium text-zinc-600"
-          >
-            {picking ? "Ёпиш" : "＋ Таом қўшиш"}
-          </button>
-
-          {picking && (
-            <div className="overflow-hidden rounded-xl border bg-white">
-              <input
-                value={q}
-                onChange={(e) => setQ(e.target.value)}
-                placeholder="Қидириш..."
-                className="w-full border-b px-4 py-2 text-sm outline-none"
-              />
-              <div className="flex gap-1.5 overflow-x-auto whitespace-nowrap border-b px-3 py-2">
-                <button
-                  onClick={() => setMenuCat(null)}
-                  className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-                    menuCat === null ? "bg-brand text-white" : "bg-zinc-100 text-zinc-600"
-                  }`}
-                >
-                  Барчаси
-                </button>
-                {menuCats.map((c) => (
-                  <button
-                    key={c}
-                    onClick={() => setMenuCat(c)}
-                    className={`shrink-0 rounded-full px-3 py-1 text-xs font-medium ${
-                      menuCat === c ? "bg-brand text-white" : "bg-zinc-100 text-zinc-600"
-                    }`}
-                  >
-                    {c}
-                  </button>
-                ))}
+        {/* CART */}
+        <aside className="order-2 min-w-0 space-y-3 lg:sticky lg:top-24 lg:self-start">
+          <div className="overflow-hidden rounded-2xl border border-brand-cream-soft bg-white shadow-sm">
+            <div className="flex items-center justify-between border-b border-brand-cream-soft px-4 py-3">
+              <span className="font-semibold text-brand-ink">Заказ</span>
+              <span className="text-xs text-zinc-400">{itemCount} таом</span>
+            </div>
+            {empty ? (
+              <div className="grid place-items-center gap-1.5 px-4 py-8 text-center">
+                <IPlate className="h-7 w-7 text-brand-cream-soft" />
+                <p className="text-sm text-zinc-400">Таом танланг</p>
               </div>
-              <div className="max-h-72 overflow-auto divide-y">
-                {filtered.slice(0, 80).map((m) => (
-                  <button
-                    key={m.id}
-                    onClick={() => add(m.id, 1)}
-                    className="flex w-full items-center justify-between px-4 py-2.5 text-left text-sm hover:bg-brand-cream active:bg-brand-cream"
-                  >
-                    <span>{m.name}</span>
-                    <span className="tabular-nums text-zinc-500">
-                      {fmt(m.price)}
+            ) : (
+              <div className="max-h-[42vh] divide-y divide-brand-cream-soft/60 overflow-auto lg:max-h-[52vh]">
+                {order.items.map((it) => (
+                  <div key={it.id} className="flex items-center gap-2 px-3 py-2.5">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm text-brand-ink">{it.name}</div>
+                      <div className="text-xs tabular-nums text-zinc-400">{fmt(it.price)}</div>
+                    </div>
+                    {it.productId ? (
+                      <div className="flex shrink-0 items-center gap-1">
+                        <Step onClick={() => add(it.productId!, -1)}><IMinus className="h-4 w-4" /></Step>
+                        <span className="w-6 text-center text-sm font-semibold tabular-nums">{it.qty}</span>
+                        <Step onClick={() => add(it.productId!, 1)}><IPlus className="h-4 w-4" /></Step>
+                      </div>
+                    ) : (
+                      <span className="shrink-0 text-sm tabular-nums text-zinc-500">×{it.qty}</span>
+                    )}
+                    <span className="w-16 shrink-0 text-right text-sm font-semibold tabular-nums text-brand-ink">
+                      {fmt(it.price * it.qty)}
                     </span>
-                  </button>
+                  </div>
                 ))}
-                {filtered.length === 0 && (
-                  <div className="px-4 py-6 text-center text-sm text-zinc-400">топилмади</div>
-                )}
               </div>
+            )}
+            <div className="space-y-1 border-t border-brand-cream-soft bg-brand-cream/30 px-4 py-3 text-sm">
+              <Row label="Оралиқ сумма" value={fmt(order.subtotal)} />
+              <Row label={`Хизмат ҳақи (${order.servicePct}%)`} value={fmt(order.service)} muted />
+              <div className="flex items-baseline justify-between pt-1">
+                <span className="font-bold text-brand-ink">ЖАМИ</span>
+                <span className="text-xl font-bold tabular-nums text-brand-ink">
+                  {fmt(order.total)} <span className="text-xs font-normal text-zinc-400">so'm</span>
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {unsent > 0 && (
+            <button
+              onClick={sendToKitchen}
+              disabled={sending}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl bg-brand-gold py-3 font-semibold text-brand-ink shadow-sm transition hover:bg-brand-gold-deep active:scale-[.99] disabled:opacity-50 motion-reduce:active:scale-100"
+            >
+              <IFlame className="h-5 w-5" />
+              Кухняга юбориш ({unsent} та)
+            </button>
+          )}
+
+          {tickets.length > 0 && (
+            <div className="overflow-hidden rounded-2xl border border-brand-cream-soft bg-white shadow-sm">
+              <button
+                onClick={() => setShowTickets((v) => !v)}
+                className="flex w-full items-center justify-between px-4 py-2.5 text-sm text-zinc-500 transition hover:bg-brand-cream/30"
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <IReceipt className="h-4 w-4" />
+                  Тикетлар ({tickets.length})
+                </span>
+                <IChevron className={`h-4 w-4 transition ${showTickets ? "rotate-180" : ""}`} />
+              </button>
+              {showTickets && (
+                <div className="divide-y divide-brand-cream-soft/60 border-t border-brand-cream-soft">
+                  {tickets.map((t) => {
+                    const d = new Date(t.createdAt);
+                    const p = (n: number) => String(n).padStart(2, "0");
+                    return (
+                      <button
+                        key={t.id}
+                        onClick={() => setTicketId(t.id)}
+                        className="flex w-full items-center justify-between px-4 py-2 text-left text-sm transition hover:bg-brand-cream/30"
+                      >
+                        <span className="tabular-nums text-zinc-500">
+                          {p(d.getHours())}:{p(d.getMinutes())}
+                        </span>
+                        <span className="tabular-nums text-zinc-400">{t.itemCount} дона</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 
           <button
             onClick={() => setPaying(true)}
-            disabled={order.items.length === 0}
-            className="w-full rounded-xl bg-zinc-900 py-3 font-medium text-white disabled:opacity-40"
+            disabled={empty}
+            className="hidden w-full items-center justify-center gap-2 rounded-2xl bg-brand py-3.5 font-semibold text-white shadow-sm transition hover:bg-brand-deep active:scale-[.99] disabled:opacity-40 lg:flex motion-reduce:active:scale-100"
           >
+            <IReceipt className="h-5 w-5" />
             Ёпиш ва чек
           </button>
-        </>
+        </aside>
+      </div>
+
+      {/* MOBILE STICKY BAR */}
+      {!empty && !paying && (
+        <div
+          className="fixed inset-x-0 bottom-0 z-20 border-t border-brand-cream-soft bg-white/95 backdrop-blur lg:hidden"
+          style={{ paddingBottom: "max(0.75rem, env(safe-area-inset-bottom))" }}
+        >
+          <div className="mx-auto flex max-w-6xl items-center gap-3 px-4 pt-3">
+            <div className="min-w-0">
+              <div className="text-[11px] text-zinc-400">Жами · {itemCount} таом</div>
+              <div className="truncate text-lg font-bold tabular-nums text-brand-ink">
+                {fmt(order.total)} <span className="text-xs font-normal text-zinc-400">so'm</span>
+              </div>
+            </div>
+            {unsent > 0 ? (
+              <button
+                onClick={sendToKitchen}
+                disabled={sending}
+                className="ml-auto inline-flex items-center gap-2 rounded-xl bg-brand-gold px-5 py-3 font-semibold text-brand-ink transition active:scale-[.98] disabled:opacity-50 motion-reduce:active:scale-100"
+              >
+                <IFlame className="h-5 w-5" />
+                Кухняга ({unsent})
+              </button>
+            ) : (
+              <button
+                onClick={() => setPaying(true)}
+                className="ml-auto inline-flex items-center gap-2 rounded-xl bg-brand px-5 py-3 font-semibold text-white transition active:scale-[.98] motion-reduce:active:scale-100"
+              >
+                <IReceipt className="h-5 w-5" />
+                Ёпиш ва чек
+              </button>
+            )}
+          </div>
+        </div>
       )}
+
+      {/* PAY MODAL */}
+      {paying && (
+        <div
+          className="fixed inset-0 z-30 flex items-end justify-center bg-brand-ink/40 backdrop-blur-sm sm:items-center sm:p-4"
+          onClick={cancelPay}
+        >
+          <div
+            className="w-full max-w-sm space-y-4 rounded-t-3xl bg-white p-5 shadow-xl sm:rounded-3xl"
+            style={{ paddingBottom: "max(1.25rem, env(safe-area-inset-bottom))" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-baseline justify-between">
+              <h3 className="font-semibold text-brand-ink">Тўлов усули</h3>
+              <span className="text-lg font-bold tabular-nums text-brand-ink">
+                {fmt(order.total)} <span className="text-xs font-normal text-zinc-400">so'm</span>
+              </span>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+              {(["cash", "card", "click", "payme", "humo", "debt"] as PayMethod[]).map((m) => {
+                const Icon = m === "cash" ? IBank : m === "debt" ? IReceipt : ICard;
+                return (
+                  <button
+                    key={m}
+                    onClick={() => pay(m)}
+                    disabled={closing}
+                    className="flex min-h-[72px] flex-col items-center justify-center gap-1.5 rounded-2xl border border-brand-cream-soft bg-brand-cream/30 font-semibold text-brand-ink transition hover:border-brand hover:bg-brand-cream active:scale-[.97] disabled:opacity-40 motion-reduce:active:scale-100"
+                  >
+                    <Icon className="h-5 w-5 text-brand" />
+                    <span className="text-sm">{PAY_LABEL[m]}</span>
+                  </button>
+                );
+              })}
+            </div>
+            {closing && <p className="text-center text-xs text-zinc-400">ёпилмоқда…</p>}
+
+            {closeErr && <p className="text-center text-sm text-red-500">{closeErr}</p>}
+            <button
+              onClick={cancelPay}
+              disabled={closing}
+              className="w-full py-1 text-xs text-zinc-400 transition hover:text-zinc-600 disabled:opacity-40"
+            >
+              Бекор қилиш
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Thermal receipt width — 58mm or 80mm, remembered per device (per printer).
+function useReceiptWidth() {
+  const [w, setW] = useState<number>(() => {
+    const v = Number(localStorage.getItem("receiptWidthMm"));
+    return v === 58 || v === 80 ? v : 80;
+  });
+  const set = (v: number) => {
+    localStorage.setItem("receiptWidthMm", String(v));
+    setW(v);
+  };
+  return [w, set] as const;
+}
+const printCss = (id: string, w: number) =>
+  `@media print{@page{size:${w}mm auto;margin:2mm}body *{visibility:hidden}#${id},#${id} *{visibility:visible}#${id}{position:absolute;left:0;top:0;width:${w}mm;max-width:none;border:0;box-shadow:none;padding:1mm}}`;
+function WidthToggle({ w, onChange }: { w: number; onChange: (v: number) => void }) {
+  return (
+    <div className="mx-auto flex max-w-xs items-center justify-center gap-1.5 pt-1 text-xs text-zinc-400">
+      <span>Принтер эни:</span>
+      {[58, 80].map((v) => (
+        <button
+          key={v}
+          onClick={() => onChange(v)}
+          className={`rounded px-2 py-0.5 font-medium transition ${
+            w === v ? "bg-brand text-white" : "bg-brand-cream text-brand hover:bg-brand-cream-soft"
+          }`}
+        >
+          {v}мм
+        </button>
+      ))}
     </div>
   );
 }
@@ -463,11 +886,12 @@ type Ticket = {
 
 function KitchenTicketView({ ticketId, onBack }: { ticketId: string; onBack: () => void }) {
   const [ticket, setTicket] = useState<Ticket | null>(null);
+  const [w, setW] = useReceiptWidth();
   useEffect(() => {
     trpc.pos.ticket.query({ ticketId }).then(setTicket).catch(() => {});
   }, [ticketId]);
 
-  if (!ticket) return <div className="p-6 text-center text-zinc-400">⏳</div>;
+  if (!ticket) return <Spin />;
 
   const byStation = new Map<string, { name: string; qty: number }[]>();
   for (const it of ticket.items) {
@@ -482,13 +906,17 @@ function KitchenTicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
 
   return (
     <div className="space-y-3">
-      <style>{`@media print{body *{visibility:hidden}#ticket,#ticket *{visibility:visible}#ticket{position:absolute;left:0;top:0}}`}</style>
-      <button onClick={onBack} className="text-sm text-zinc-500 hover:text-zinc-900">
-        ← Заказга қайтиш
+      <style>{printCss("ticket", w)}</style>
+      <button
+        onClick={onBack}
+        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-white hover:text-brand"
+      >
+        <IBack className="h-4 w-4" />
+        Заказга қайтиш
       </button>
       <div
         id="ticket"
-        className="mx-auto max-w-xs space-y-3 rounded-xl border bg-white p-5 font-mono text-[13px] text-zinc-800"
+        className="mx-auto max-w-xs space-y-3 rounded-2xl border border-brand-cream-soft bg-white p-5 font-mono text-[13px] text-zinc-800 shadow-sm"
       >
         <div className="text-center font-bold">КУХНЯ ТИКЕТИ</div>
         <Hr />
@@ -511,17 +939,19 @@ function KitchenTicketView({ ticketId, onBack }: { ticketId: string; onBack: () 
       <div className="mx-auto flex max-w-xs gap-2">
         <button
           onClick={() => window.print()}
-          className="flex-1 rounded-xl border py-2.5 text-sm font-medium"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-brand-cream-soft py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-brand-cream/30"
         >
-          🖨 Чоп этиш
+          <IPrinter className="h-4 w-4" />
+          Чоп этиш
         </button>
         <button
           onClick={onBack}
-          className="flex-1 rounded-xl bg-amber-500 py-2.5 text-sm font-medium text-white"
+          className="flex-1 rounded-xl bg-brand-gold py-2.5 text-sm font-semibold text-brand-ink transition hover:bg-brand-gold-deep"
         >
           Давом этиш
         </button>
       </div>
+      <WidthToggle w={w} onChange={setW} />
     </div>
   );
 }
@@ -530,20 +960,23 @@ function Chek({ order, onBack }: { order: Order; onBack: () => void }) {
   const d = new Date(order.createdAt);
   const p = (n: number) => String(n).padStart(2, "0");
   const when = `${p(d.getDate())}.${p(d.getMonth() + 1)}.${d.getFullYear()} ${p(d.getHours())}:${p(d.getMinutes())}`;
+  const [w, setW] = useReceiptWidth();
   return (
     <div className="space-y-3">
-      <style>{`@media print{body *{visibility:hidden}#chek,#chek *{visibility:visible}#chek{position:absolute;left:0;top:0}}`}</style>
+      <style>{printCss("chek", w)}</style>
       <button
         onClick={onBack}
-        className="text-sm text-zinc-500 hover:text-zinc-900"
+        className="inline-flex items-center gap-1.5 rounded-lg px-2.5 py-1.5 text-sm font-medium text-zinc-500 transition hover:bg-white hover:text-brand"
       >
-        ← Заказлар
+        <IBack className="h-4 w-4" />
+        Заллар
       </button>
       <div
         id="chek"
-        className="mx-auto max-w-xs rounded-xl border bg-white p-5 font-mono text-[13px] text-zinc-800"
+        className="mx-auto max-w-xs rounded-2xl border border-brand-cream-soft bg-white p-5 font-mono text-[13px] text-zinc-800 shadow-sm"
       >
-        <div className="text-center">
+        <div className="flex flex-col items-center gap-1 text-center">
+          <img src={BRAND.logoSmall} alt="" className="h-11 w-11 rounded-full object-cover" />
           <div className="text-base font-bold">{BRAND.name}</div>
           <div className="text-xs text-zinc-500">{BRAND.city} · {BRAND.phone}</div>
         </div>
@@ -557,6 +990,7 @@ function Chek({ order, onBack }: { order: Order; onBack: () => void }) {
         <Hr />
         <Line l="Зал" r={order.hall ?? "—"} />
         {order.tableNo && <Line l="Стол" r={order.tableNo} />}
+        {order.guests ? <Line l="Меҳмонлар" r={String(order.guests)} /> : null}
         <Line l="Заказ №" r={order.checkNo} />
         <Line l="Очилди" r={when} />
         <Line l="Официант" r={order.waiter ?? "—"} />
@@ -595,53 +1029,37 @@ function Chek({ order, onBack }: { order: Order; onBack: () => void }) {
       <div className="mx-auto flex max-w-xs gap-2">
         <button
           onClick={() => window.print()}
-          className="flex-1 rounded-xl border py-2.5 text-sm font-medium"
+          className="flex flex-1 items-center justify-center gap-2 rounded-xl border border-brand-cream-soft py-2.5 text-sm font-medium text-zinc-700 transition hover:bg-brand-cream/30"
         >
-          🖨 Чоп этиш
+          <IPrinter className="h-4 w-4" />
+          Чоп этиш
         </button>
         <button
           onClick={onBack}
-          className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-medium text-white"
+          className="flex-1 rounded-xl bg-brand py-2.5 text-sm font-semibold text-white transition hover:bg-brand-deep"
         >
-          Янги заказ
+          Заллар
         </button>
       </div>
+      <WidthToggle w={w} onChange={setW} />
     </div>
   );
 }
 
-function Step({
-  onClick,
-  children,
-}: {
-  onClick: () => void;
-  children: string;
-}) {
+function Step({ onClick, children }: { onClick: () => void; children: ReactNode }) {
   return (
     <button
       onClick={onClick}
-      className="grid h-10 w-10 shrink-0 place-items-center rounded-lg bg-zinc-100 text-lg font-bold text-zinc-700 active:bg-zinc-200"
+      className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-brand-cream text-brand transition hover:bg-brand-cream-soft active:scale-90 motion-reduce:active:scale-100"
     >
       {children}
     </button>
   );
 }
 
-function Row({
-  label,
-  value,
-  muted,
-  big,
-}: {
-  label: string;
-  value: string;
-  muted?: boolean;
-  big?: boolean;
-}) {
+function Row({ label, value, muted }: { label: string; value: string; muted?: boolean }) {
   return (
-    <div
-      className={`flex justify-between ${big ? "pt-1 text-base font-bold" : muted ? "text-zinc-500" : ""}`}
-    >
+    <div className={`flex justify-between ${muted ? "text-zinc-500" : "text-brand-ink"}`}>
       <span>{label}</span>
       <span className="tabular-nums">{value}</span>
     </div>
